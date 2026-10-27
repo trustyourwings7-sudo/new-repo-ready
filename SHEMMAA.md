@@ -31,15 +31,18 @@ Confidence tags: [Certain] hard evidence · [Likely] strong inference · [Guessi
   unapproved payouts, cash-book vs MoMo/bank mismatches) with a weekly owner report. [Proposed]
 
 ## 3b. End goal (backcast)
-- Ambition: global company, exit target stated as "$900M–$21M" (range unclear —
-  founder to confirm single target). Keep >=15% founder equity at exit. [Certain]
+- Ambition: global company, exit target confirmed 2026-10-27 as **$900M–$21B**.
+  Keep >=15% founder equity at exit. [Certain]
+- $21B exit ≈ $1.5–2B+ ARR (Ramp-scale: ~$1B ARR Aug 2025, valued $22.5–32B in 2025).
+  Only reachable by expanding detection → spend control → cards/payments/payroll
+  (interchange + float revenue). Detection-only caps near the $900M end. [Likely]
 - $900M exit ≈ $90–110M ARR at 8–10x; $21M ≈ $3–4M ARR. [Likely]
 - Equity math: solo ≈43% at exit; 50/50 co-founder ≈21% (pre-seed 10%, seed 20%,
   A 20%, B 15%, pool 12%). Extra rounds/bridges risk dropping below 15%. [Likely]
 - Global category: internal-fraud detection for cash/mobile-money/paper-receipt
   orgs with no finance team. Beachhead: Rwanda → East Africa → Nigeria/Ghana →
   India/Indonesia/Philippines → global NGO/donor channel. [Proposed]
-- Exit comps: Featurespace→Visa (~$900M+, 2024), Expensya→Medius. Direct global
+- Exit comps: Featurespace→Visa (2024, price UNDISCLOSED; reports £700M–~$1B, Forrester est. $350–450M), Expensya→Medius. Direct global
   competitor on receipt fraud: AppZen (enterprise). Also Ramp, Brex, Pleo, Sardine, Sift. [Likely — verify]
 
 ## 4. Stage
@@ -55,6 +58,19 @@ Confidence tags: [Certain] hard evidence · [Likely] strong inference · [Guessi
 - Gap: cash + MoMo + bank reconciliation for small East African orgs without
   finance teams. [Guessing — must validate with interviews]
 - TODO: TAM/SAM/SOM for Rwanda → East Africa (count of SMEs/NGOs, willingness to pay).
+
+## 5b. Market sizing (2026-10-27, v1)
+- Inputs: ~322M formal MSMEs globally (World Bank MSME-EI, 2019); ACFE 2024: orgs lose
+  ~5% revenue to fraud, median loss $141k for <100 employees, 1,921 cases/138 countries;
+  fraud detection market $32–55B (2025); spend mgmt software $10–27B (2025);
+  AppZen raised $180M Sep 2025, valuation est. $0.5–1.3B. [Certain these are published]
+- TAM ≈ $27B/yr: ~45M orgs with staff handling money (≈35M MSMEs with 5+ employees
+  + ≈10M NGOs/schools/churches/clinics) × ~$600/yr blended. [Guessing on counts & price]
+- SAM ≈ $4.5B/yr: ~15M of those in cash/mobile-money emerging markets, reachable by
+  smartphone/MoMo, × ~$300/yr. [Guessing]
+- SOM (year 8–10) ≈ $60–120M ARR: 1–2% of SAM, 150–300k orgs × ~$400/yr → matches a
+  ~$900M exit at 8–10x. [Guessing]
+- Value ceiling: 5% of revenue at risk → pricing should anchor at <0.5% of revenue.
 
 ## 6. Open questions
 - Who signs the cheque: founder, board treasurer, or donor? (NGO donors may pay for controls.)
@@ -73,4 +89,5 @@ Confidence tags: [Certain] hard evidence · [Likely] strong inference · [Guessi
 ## 8. Session log
 - 2026-10-26: Reconstructed context from Drive/Gmail (CV, Formula Africa script, logo email).
 - 2026-10-27: Founder interview (8 questions). Wedge chosen, brief created.
-- 2026-10-27: Global ambition + exit backcast added. Open: confirm exit target number.
+- 2026-10-27: Global ambition + exit backcast added.
+- 2026-10-27: Exit target confirmed $900M–$21B. Market sized v1 (live sources). Featurespace price corrected to undisclosed.

@@ -91,3 +91,4 @@ Confidence tags: [Certain] hard evidence · [Likely] strong inference · [Guessi
 - 2026-10-27: Founder interview (8 questions). Wedge chosen, brief created.
 - 2026-10-27: Global ambition + exit backcast added.
 - 2026-10-27: Exit target confirmed $900M–$21B. Market sized v1 (live sources). Featurespace price corrected to undisclosed.
+- 2026-10-27: Discovery Google Form (12 Qs, branching) + Apps Script builder added in research/

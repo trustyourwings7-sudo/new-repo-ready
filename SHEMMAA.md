@@ -30,6 +30,18 @@ Confidence tags: [Certain] hard evidence · [Likely] strong inference · [Guessi
   (duplicate/fake receipts, round-number and just-below-approval-limit spends,
   unapproved payouts, cash-book vs MoMo/bank mismatches) with a weekly owner report. [Proposed]
 
+## 3b. End goal (backcast)
+- Ambition: global company, exit target stated as "$900M–$21M" (range unclear —
+  founder to confirm single target). Keep >=15% founder equity at exit. [Certain]
+- $900M exit ≈ $90–110M ARR at 8–10x; $21M ≈ $3–4M ARR. [Likely]
+- Equity math: solo ≈43% at exit; 50/50 co-founder ≈21% (pre-seed 10%, seed 20%,
+  A 20%, B 15%, pool 12%). Extra rounds/bridges risk dropping below 15%. [Likely]
+- Global category: internal-fraud detection for cash/mobile-money/paper-receipt
+  orgs with no finance team. Beachhead: Rwanda → East Africa → Nigeria/Ghana →
+  India/Indonesia/Philippines → global NGO/donor channel. [Proposed]
+- Exit comps: Featurespace→Visa (~$900M+, 2024), Expensya→Medius. Direct global
+  competitor on receipt fraud: AppZen (enterprise). Also Ramp, Brex, Pleo, Sardine, Sift. [Likely — verify]
+
 ## 4. Stage
 - Idea only: name, logo, Jarvis helpdesk account (inactive since Aug). No code,
   no customer interviews, no users. Repo was empty before this file. [Certain]
@@ -61,3 +73,4 @@ Confidence tags: [Certain] hard evidence · [Likely] strong inference · [Guessi
 ## 8. Session log
 - 2026-10-26: Reconstructed context from Drive/Gmail (CV, Formula Africa script, logo email).
 - 2026-10-27: Founder interview (8 questions). Wedge chosen, brief created.
+- 2026-10-27: Global ambition + exit backcast added. Open: confirm exit target number.

@@ -86,9 +86,15 @@ Confidence tags: [Certain] hard evidence · [Likely] strong inference · [Guessi
    weekly report to owner. Run manually for 2–3 orgs.
 3. Get 1 org to pay anything (even RWF 10k) = first validation signal.
 
+## 7b. Live assets
+- Discovery form (share): https://docs.google.com/forms/d/e/1FAIpQLSdqyCRD5D1yEYfmXln_8R5gtLT_KdajexJmygruCpx8-iW4Fw/viewform
+- Form editor: https://docs.google.com/forms/d/1SBZ5X9cXRweCgUWIIx23o_gs20Gu1_PNW_jxCPbpkTk/edit
+- Responses sheet: https://docs.google.com/spreadsheets/d/19cmwD3-LKKMQ61ZrnrIwpOCz2qKonsja-GaJEAZqwQU/edit
+
 ## 8. Session log
 - 2026-10-26: Reconstructed context from Drive/Gmail (CV, Formula Africa script, logo email).
 - 2026-10-27: Founder interview (8 questions). Wedge chosen, brief created.
 - 2026-10-27: Global ambition + exit backcast added.
 - 2026-10-27: Exit target confirmed $900M–$21B. Market sized v1 (live sources). Featurespace price corrected to undisclosed.
 - 2026-10-27: Discovery Google Form (12 Qs, branching) + Apps Script builder added in research/
+- 2026-10-28: Form built successfully via Apps Script (live links in 7b). Next: test both branches, brand it, distribute, target 50 responses.

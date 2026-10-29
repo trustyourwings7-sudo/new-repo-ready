@@ -90,6 +90,8 @@ Confidence tags: [Certain] hard evidence · [Likely] strong inference · [Guessi
 - Discovery form (share): https://docs.google.com/forms/d/e/1FAIpQLSdqyCRD5D1yEYfmXln_8R5gtLT_KdajexJmygruCpx8-iW4Fw/viewform
 - Form editor: https://docs.google.com/forms/d/1SBZ5X9cXRweCgUWIIx23o_gs20Gu1_PNW_jxCPbpkTk/edit
 - Responses sheet: https://docs.google.com/spreadsheets/d/19cmwD3-LKKMQ61ZrnrIwpOCz2qKonsja-GaJEAZqwQU/edit
+  (Rwanda form, RWF. Use for Rwanda only.)
+- GLOBAL form (USD, region + country questions): script research/shemmaa_form_global.gs. NOT yet run; links TBD.
 
 ## 8. Session log
 - 2026-10-26: Reconstructed context from Drive/Gmail (CV, Formula Africa script, logo email).
@@ -98,3 +100,4 @@ Confidence tags: [Certain] hard evidence · [Likely] strong inference · [Guessi
 - 2026-10-27: Exit target confirmed $900M–$21B. Market sized v1 (live sources). Featurespace price corrected to undisclosed.
 - 2026-10-27: Discovery Google Form (12 Qs, branching) + Apps Script builder added in research/
 - 2026-10-28: Form built successfully via Apps Script (live links in 7b). Next: test both branches, brand it, distribute, target 50 responses.
+- 2026-10-29: Founder doing outreach in US, Canada, Europe, all of Africa. Added global USD form script + LinkedIn/email/WhatsApp/French messages. Rule: segment results by region, ≥20 responses per region.

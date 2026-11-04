@@ -9,3 +9,7 @@ next-env.d.ts
 .env.*
 !.env.example
 coverage/
+
+# Research output (may contain names of real people) and MCP artefacts
+intel/
+.playwright-mcp/

@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "PIES - Personal Intelligence & Execution System",
-  "engines": { "node": ">=20.9" },
+  "engines": {
+    "node": ">=20.9"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,12 +13,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:db": "bash scripts/test-db.sh",
-    "check": "pnpm typecheck && pnpm test && pnpm test:db && pnpm build"
+    "test:e2e": "bash scripts/test-automation-e2e.sh",
+    "check": "pnpm typecheck && pnpm test && pnpm test:db && pnpm build && pnpm test:e2e"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.118.0",
     "next": "16.4.2",
+    "postgres": "3.4.9",
     "react": "19.2.9",
     "react-dom": "19.2.9",
     "server-only": "0.0.1",

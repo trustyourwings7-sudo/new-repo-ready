@@ -10,6 +10,13 @@ Read this file first in every session. Update the **Lessons log** at the end of 
 - No sample or demo data in the UI. Show honest empty or not-configured states.
 - Never print, log or commit secrets. Only `NEXT_PUBLIC_*` values may reach the browser.
 - Follow the phases in order. Stop at the end of each phase and wait for owner approval.
+- Never use or request the Supabase service-role key. n8n gets only the HMAC secret + integration id.
+- New automation operations need: SQL case in `automation_execute`, TS entry in `AUTOMATION_OPERATIONS`, strict key allowlist, `pies_claim_run`, and tests (TS and SQL lists are checked identical).
+- Every new function migration must end with explicit grants. `production_checks.sql` and `20_automation_boundary.sql` enforce exact allowlists.
+- Every user-owned reference must be a composite `(id, user_id)` FK.
+- No Gmail send capability, ever. `tests/gmail.test.ts` scans `src/`.
+- Every n8n workflow must pass `auditN8nWorkflow()` before publishing.
+- Do not claim "works on Supabase" until `docs/SUPABASE_INTEGRATION_TEST_PLAN.md` T1–T8 pass.
 
 ## Commands (run from `pies/`)
 - `pnpm check` — typecheck + unit tests + DB tests + build. Must pass before every commit.
@@ -27,3 +34,11 @@ Read this file first in every session. Update the **Lessons log** at the end of 
 - 2026-11-04 — Test runners that pipe output must preserve the exit status. Verified by injecting a failing test.
 - 2026-11-04 — On mobile, a horizontally scrolling flex nav inside a flex column needs `min-w-0` on its ancestor, or the whole page overflows.
 - 2026-11-04 — Gmail `gmail.compose` can also send. "Draft only" must be enforced in code, not by OAuth scope.
+- 2026-11-05 — `revoke ... from public, anon` is not enough on Supabase-style setups: default privileges grant EXECUTE to `authenticated` directly. A SECURITY DEFINER helper was callable by every user and wrote into another user's rows. Always revoke from `authenticated` too, and test exact allowlists.
+- 2026-11-05 — Foreign-key checks ignore RLS. A user could link rows to another user's records by UUID. Use composite `(id, user_id)` FKs; `ON DELETE SET NULL (col)` keeps `user_id` intact (PG15+).
+- 2026-11-05 — Concurrency tests must avoid accidental serialization: first-call `INSERT … ON CONFLICT` blocked the racers, so a mutant without the lock survived. Pre-create rows, then race. Verify with a mutant.
+- 2026-11-05 — n8n Cloud exposes built-in AI/search "gateway credits" usable without credentials. A governor in PIES cannot see them; audit workflow JSON instead.
+- 2026-11-05 — PL/pgSQL parameters cannot be `record`; use the table rowtype.
+- 2026-11-05 — A source-scan test caught its own module's comment. Keep forbidden strings out of comments and scan narrowly.
+- 2026-11-05 — `SET SESSION AUTHORIZATION` (not `SET ROLE`) is needed to test logic that checks `session_user`.
+- 2026-11-05 — The Phase 1 "no mobile overflow" claim was wrong: `sr-only` (absolute) spans escaped a scrolling nav. Check `documentElement.scrollWidth` on every page and both widths, and give scroll containers `position: relative`.

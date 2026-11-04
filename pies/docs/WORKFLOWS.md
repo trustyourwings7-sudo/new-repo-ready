@@ -2,14 +2,20 @@
 
 Status: **specifications only.** At inspection (2026-11-04) the connected n8n instance had 0 workflows and 0 credentials. None are created until you approve Phase 2.
 
+## Boundary (Phase 1.5)
+
+- Workflows call **only** `POST <PIES>/api/automation/v1`, signed with HMAC (Crypto node, secret in an n8n variable).
+- No Supabase, Postgres, Gmail, AI or search nodes; no credentials. `auditN8nWorkflow()` must return no findings before a workflow is published.
+- Paid AI/search calls happen inside PIES (Phase 2 paid-call proxy), never inside n8n.
+
 ## Rules shared by every workflow
 
 | Concern | Rule |
 |---|---|
 | Trigger | Schedule or webhook only. No workflow triggers another in a loop; the coordinator queues tasks instead. |
 | Input validation | Validate payloads against a fixed schema (n8n Code node or the app's webhook). Reject unknown fields. |
-| Permission check | Run `decide(agent, action)` logic first and log the result with `write_audit_log`. |
-| Budget check | Before any paid node, call `reserve_budget`; skip the paid branch on denial; then `commit_usage` or `release_usage`. |
+| Permission check | Enforced by `automation_execute` (and logged) on every call. |
+| Budget check | Paid work is requested from PIES, which reserves, calls and commits server-side. n8n never touches the governor. |
 | Duplicate prevention | Upsert on `dedupe_key` or `idempotency_key`; idempotency key = workflow + item hash + date. |
 | Retries | At most 3 with backoff of 1, 5 and 15 minutes. After that, mark the task `failed` and notify. |
 | Limits | `agent_runs.max_tasks` (default 50), timeout 600 s, task depth ≤ 3. |

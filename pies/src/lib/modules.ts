@@ -28,7 +28,7 @@ export const MODULES: readonly ModuleDef[] = [
   { slug: "tasks", letter: "I", name: "Tasks & Activities", status: "schema_ready", phase: 5, summary: "Follow-ups, deadlines and activity history.", tables: ["activities", "notifications"] },
   { slug: "profile", letter: "J", name: "Personal Profile & Skills", status: "schema_ready", phase: 5, summary: "Source-tracked profile facts. Agents may only cite what is here.", tables: ["user_profiles", "profile_entries", "skills", "documents"] },
   { slug: "budget", letter: "K", name: "Budget & Usage", status: "available", phase: 1, summary: "Hard $10/month governor, per-provider limits and usage.", tables: ["budgets", "usage_records", "provider_configs"] },
-  { slug: "settings", letter: "L", name: "Settings & Security", status: "available", phase: 1, summary: "Integration status, permission levels and audit log.", tables: ["user_preferences", "audit_logs"] },
+  { slug: "settings", letter: "L", name: "Settings & Security", status: "available", phase: 1, summary: "Integration status, permission levels and audit log.", tables: ["user_preferences", "audit_logs", "automation_integrations", "automation_requests", "projects"] },
 ];
 
 export function moduleBySlug(slug: string): ModuleDef | undefined {

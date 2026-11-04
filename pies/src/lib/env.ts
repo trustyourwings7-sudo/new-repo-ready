@@ -29,7 +29,18 @@ const schema = z.object({
   BRAVE_SEARCH_API_KEY: optional,
   GOOGLE_OAUTH_CLIENT_ID: optional,
   GOOGLE_OAUTH_CLIENT_SECRET: optional,
-  PIES_WEBHOOK_SECRET: optional,
+  // Automation boundary (n8n -> PIES). n8n receives only the HMAC secret.
+  PIES_AUTOMATION_SECRET: optional.refine((v) => v === null || v.length >= 32, {
+    message: "PIES_AUTOMATION_SECRET must be at least 32 characters",
+  }),
+  PIES_AUTOMATION_INTEGRATION_ID: optional.refine(
+    (v) => v === null || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
+    { message: "PIES_AUTOMATION_INTEGRATION_ID must be a UUID" },
+  ),
+  PIES_AUTOMATION_DATABASE_URL: optional.refine((v) => v === null || /^postgres(ql)?:\/\/pies_automation[.:@]/.test(v), {
+    message: "PIES_AUTOMATION_DATABASE_URL must connect as the pies_automation role",
+  }),
+  // Must NOT be set. Present only so its presence can be detected and flagged.
   SUPABASE_SERVICE_ROLE_KEY: optional,
 });
 
@@ -79,6 +90,18 @@ export function integrationStatus(e: ServerEnv = env()) {
     gemini: s(Boolean(e.GEMINI_API_KEY)),
     braveSearch: s(Boolean(e.BRAVE_SEARCH_API_KEY)),
     gmailOAuth: s(Boolean(e.GOOGLE_OAUTH_CLIENT_ID && e.GOOGLE_OAUTH_CLIENT_SECRET)),
-    webhookSecret: s(Boolean(e.PIES_WEBHOOK_SECRET)),
+    automationApi: s(Boolean(e.PIES_AUTOMATION_SECRET && e.PIES_AUTOMATION_INTEGRATION_ID && e.PIES_AUTOMATION_DATABASE_URL)),
   } as const;
+}
+
+/** Security warnings derived from configuration. Booleans/labels only. */
+export function configurationWarnings(e: ServerEnv = env()): string[] {
+  const w: string[] = [];
+  if (e.SUPABASE_SERVICE_ROLE_KEY) {
+    w.push("SUPABASE_SERVICE_ROLE_KEY is set. PIES does not use it; remove it from this environment and never give it to n8n.");
+  }
+  if (e.NEXT_PUBLIC_SUPABASE_URL && allowedEmails(e).size === 0) {
+    w.push("PIES_ALLOWED_EMAILS is empty, so nobody can sign in.");
+  }
+  return w;
 }

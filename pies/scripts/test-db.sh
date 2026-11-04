@@ -25,7 +25,8 @@ for f in "$ROOT"/supabase/migrations/*.sql; do
   echo "apply  $(basename "$f")"
   "${PSQL[@]}" -f "$f"
 done
-for f in "$ROOT"/supabase/tests/[1-9]*.sql; do
+for f in "$ROOT"/supabase/tests/*.sql; do
+  [ "$(basename "$f")" = "00_supabase_stub.sql" ] && continue
   echo "test   $(basename "$f")"
   if ! out="$("${PSQL[@]}" -f "$f" 2>&1)"; then
     printf '%s\n' "$out" | grep -v '^$' >&2
@@ -34,4 +35,16 @@ for f in "$ROOT"/supabase/tests/[1-9]*.sql; do
   fi
   printf '%s\n' "$out" | grep -E 'passed|NOTICE' || true
 done
+for f in "$ROOT"/supabase/tests/*.sh; do
+  echo "test   $(basename "$f")"
+  par="$(mktemp -d "$WORK/par.XXXX")"
+  PGHOST="$WORK" PGPORT="$PORT" TMPDIR_PAR="$par" bash "$f" || { echo "FAILED: $(basename "$f")" >&2; exit 1; }
+done
+echo "verify production_checks.sql"
+checks="$("${PSQL[@]}" -F '|' -f "$ROOT/supabase/verify/production_checks.sql")"
+if printf '%s\n' "$checks" | awk -F'|' '$3 != "t"' | grep -q .; then
+  printf '%s\n' "$checks" | awk -F'|' '$3 != "t"' >&2
+  echo "FAILED: production_checks.sql" >&2; exit 1
+fi
+echo "  $(printf '%s\n' "$checks" | wc -l) checks ok"
 echo "database tests passed"

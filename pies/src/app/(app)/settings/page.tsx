@@ -1,6 +1,6 @@
-import { Badge, Card, Empty } from "@/components/ui";
+import { Badge, Card, Empty, Notice } from "@/components/ui";
 import { getSession } from "@/lib/auth";
-import { integrationStatus } from "@/lib/env";
+import { configurationWarnings, integrationStatus } from "@/lib/env";
 import { ACTIONS, type ActionId } from "@/lib/permissions/catalog";
 import { initializeProfile } from "./actions";
 
@@ -11,7 +11,7 @@ const INTEGRATIONS: { key: keyof ReturnType<typeof integrationStatus>; label: st
   { key: "gemini", label: "Google Gemini API", note: "Optional. Check free-tier data-use terms before sending profile data." },
   { key: "braveSearch", label: "Brave Search API", note: "Optional. Pricing must be verified before use." },
   { key: "gmailOAuth", label: "Gmail OAuth client", note: "Phase 3. Drafts only by policy." },
-  { key: "webhookSecret", label: "n8n webhook secret", note: "Phase 2." },
+  { key: "automationApi", label: "Automation API (n8n boundary)", note: "HMAC secret + integration id + pies_automation database URL." },
 ];
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -39,6 +39,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <p className="text-sm text-mist-400">Configuration is read from server environment variables. Secret values are never displayed.</p>
       </header>
 
+      {configurationWarnings().map((w) => (
+        <Notice key={w} tone="bad">{w}</Notice>
+      ))}
+
       <Card id="integrations" title="Integrations">
         <ul className="divide-y divide-ink-800 text-sm">
           {INTEGRATIONS.map((i) => (
@@ -54,7 +58,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <Card id="profile-init" title="Profile initialization">
         <p className="mb-2 text-sm text-mist-300">
           Loads the starting profile context (Kigali; high school graduate; basketball; ISCO operations; Ramani Travel sales and marketing; JAMOF founder;
-          CRM, SEO, GEO and AI automation interests). Each fact is stored as <em>user asserted</em> and can be edited. Nothing else is added. Running it twice does nothing.
+          CRM, SEO, GEO and AI automation interests) and six starting projects: career, education & funding, JAMOF, Shemmaa, AI consulting, lead generation. Each fact is stored as <em>user asserted</em> and can be edited. Nothing else is added. Running it twice does nothing.
         </p>
         {profileResult === "ok" ? <p className="mb-2 text-sm text-ok-400">Profile context loaded.</p> : null}
         {profileResult === "error" ? <p className="mb-2 text-sm text-bad-400">Could not load the profile context.</p> : null}

@@ -9,6 +9,7 @@ export async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   let response = NextResponse.next({ request });
+  if (request.nextUrl.pathname.startsWith("/api/automation/")) return response;
   if (!url || !key) return response; // setup mode: pages render configuration guidance
 
   const supabase = createServerClient(url, key, {
@@ -23,7 +24,8 @@ export async function proxy(request: NextRequest) {
   });
   const { data } = await supabase.auth.getUser();
   const path = request.nextUrl.pathname;
-  const isPublic = path === "/login" || path.startsWith("/auth/");
+  // /api/automation/* authenticates with HMAC signatures, not browser sessions.
+  const isPublic = path === "/login" || path.startsWith("/auth/") || path.startsWith("/api/automation/");
   if (!data.user && !isPublic) {
     const to = request.nextUrl.clone();
     to.pathname = "/login";

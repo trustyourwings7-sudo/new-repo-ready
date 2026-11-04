@@ -18,7 +18,7 @@ const LABEL: Record<ModuleStatus, string> = {
 export function Nav() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Modules" className="flex min-w-0 max-w-full gap-1 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0">
+    <nav aria-label="Modules" className="relative flex min-w-0 max-w-full gap-1 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0">
       {MODULES.map((m) => {
         const href = `/${m.slug}`;
         const active = pathname === href;

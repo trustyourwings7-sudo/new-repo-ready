@@ -3,7 +3,7 @@ import { Badge, Card, Empty, Stat, money } from "@/components/ui";
 import { AGENTS } from "@/lib/agents/registry";
 import { getSession } from "@/lib/auth";
 import { totals } from "@/lib/budget/governor";
-import { loadDashboard, type Section } from "@/lib/dashboard";
+import { loadDashboard, loadProjects, type ProjectRow, type Section } from "@/lib/dashboard";
 
 const CATEGORIES = ["employment", "education", "scholarship", "grant", "funding", "accelerator", "partnership", "consulting", "commercial", "other"];
 
@@ -30,7 +30,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const category = typeof sp.category === "string" ? sp.category : undefined;
   const session = await getSession();
   const live = session.kind === "signed_in";
-  const d = live ? await loadDashboard(session.supabase, { q, category }) : null;
+  const project = typeof sp.project === "string" ? sp.project : undefined;
+  const projects: ProjectRow[] = live ? await loadProjects(session.supabase) : [];
+  const projectId = projects.find((p) => p.slug === project)?.id;
+  const d = live ? await loadDashboard(session.supabase, { q, category, projectId }) : null;
 
   const disconnected = <Empty>Not connected. Configure Supabase to see real data.</Empty>;
   function render<T>(s: Section<T> | undefined, fn: (data: T) => React.ReactNode) {
@@ -60,6 +63,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <option value="">All categories</option>
             {CATEGORIES.map((c) => (
               <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <label className="sr-only" htmlFor="project">Project</label>
+          <select id="project" name="project" defaultValue={project ?? ""} className="rounded border border-ink-700 bg-ink-900 px-2 py-1.5 text-sm">
+            <option value="">All projects</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.slug}>{p.name}</option>
             ))}
           </select>
           <button className="rounded bg-signal-500 px-3 py-1.5 text-sm font-medium text-ink-950 hover:bg-signal-400">Filter</button>

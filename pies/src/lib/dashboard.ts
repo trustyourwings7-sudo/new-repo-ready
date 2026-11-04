@@ -43,25 +43,36 @@ function escapeLike(q: string) {
   return q.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
-export async function loadDashboard(sb: SupabaseClient, opts: { q?: string; category?: string }) {
+export interface ProjectRow { id: string; slug: string; name: string; kind: string }
+
+export async function loadProjects(sb: SupabaseClient): Promise<ProjectRow[]> {
+  const { data, error } = await sb.from("projects").select("id,slug,name,kind").eq("status", "active").order("name");
+  if (error) return [];
+  return (data ?? []) as ProjectRow[];
+}
+
+export async function loadDashboard(sb: SupabaseClient, opts: { q?: string; category?: string; projectId?: string }) {
   const nowIso = new Date().toISOString();
   const in30 = new Date(Date.now() + 30 * 86_400_000).toISOString();
   const q = opts.q?.trim().slice(0, 100) || undefined;
   const category = opts.category && /^[a-z_]{1,32}$/.test(opts.category) ? opts.category : undefined;
+  const projectId = opts.projectId && /^[0-9a-f-]{36}$/i.test(opts.projectId) ? opts.projectId : undefined;
 
   const filter = (query: any) => {
     let out = query;
     if (q) out = out.ilike("title", `%${escapeLike(q)}%`);
     if (category) out = out.eq("category", category);
+    if (projectId) out = out.eq("project_id", projectId);
     return out;
   };
+  const byProject = (query: any) => (projectId ? query.eq("project_id", projectId) : query);
 
   const [overview, priority, career, funding, commercial, outreach, deadlines, agents, research, budget] = await Promise.all([
     section(async () => ({
-      total: await count(sb, "opportunities"),
-      open: await count(sb, "opportunities", (x) => x.in("status", OPEN_STATUSES)),
-      verified: await count(sb, "opportunities", (x) => x.not("last_verified_at", "is", null)),
-      ineligible: await count(sb, "opportunities", (x) => x.eq("eligibility_status", "ineligible")),
+      total: await count(sb, "opportunities", byProject),
+      open: await count(sb, "opportunities", (x) => byProject(x.in("status", OPEN_STATUSES))),
+      verified: await count(sb, "opportunities", (x) => byProject(x.not("last_verified_at", "is", null))),
+      ineligible: await count(sb, "opportunities", (x) => byProject(x.eq("eligibility_status", "ineligible"))),
     })),
     section(async () => {
       const { data, error } = await filter(
@@ -89,9 +100,9 @@ export async function loadDashboard(sb: SupabaseClient, opts: { q?: string; cate
       won: await count(sb, "opportunities", (x) => x.in("category", FUNDING).eq("status", "won")),
     })),
     section(async () => ({
-      prospects: await count(sb, "client_pipeline", (x) => x.in("stage", ["prospect", "researching"])),
-      qualified: await count(sb, "client_pipeline", (x) => x.in("stage", ["qualified", "contacted", "meeting", "proposal", "negotiation"])),
-      won: await count(sb, "client_pipeline", (x) => x.eq("stage", "won")),
+      prospects: await count(sb, "client_pipeline", (x) => byProject(x.in("stage", ["prospect", "researching"]))),
+      qualified: await count(sb, "client_pipeline", (x) => byProject(x.in("stage", ["qualified", "contacted", "meeting", "proposal", "negotiation"]))),
+      won: await count(sb, "client_pipeline", (x) => byProject(x.eq("stage", "won"))),
     })),
     section(async () => ({
       drafts: await count(sb, "outreach", (x) => x.in("status", ["draft_internal", "gmail_draft_created"])),

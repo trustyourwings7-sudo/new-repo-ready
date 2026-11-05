@@ -50,4 +50,8 @@ Read this file first in every session. Update the **Lessons log** at the end of 
 - 2026-11-05 — Claude Code reads `.mcp.json` and `.claude/settings.json` from the launch directory (repo root here); configs placed only in `pies/` would never load. Skills can be nested (`pies/.claude/skills`).
 - 2026-11-05 — This cloud session's network allows npm and api.github.com but blocks most SaaS hosts (context7, exa, tavily, firecrawl, supabase docs). A started MCP server is not a working one; test a real tool call.
 - 2026-11-05 — Playwright MCP ships `browser_run_code_unsafe` and `browser_evaluate` (arbitrary code). Deny them by default.
+- 2026-11-05 — Context7's keyless tier ran out ("Monthly quota exceeded") after 4 calls from shared cloud egress. Plan for a free key.
+- 2026-11-05 — `claude mcp get` shows the raw `${VAR}` text; that is not proof of expansion. `claude mcp list` diagnostics do validate it ("Missing environment variables").
+- 2026-11-05 — Project-scoped `claude plugin disable --scope project` writes `enabledPlugins` into the repo settings: a durable way to drop irrelevant or failing plugin servers for this repo only.
+- 2026-11-05 — A server-level deny (`mcp__Composio`) removes every tool of that server immediately in the running session.
 - 2026-11-05 — The Phase 1 "no mobile overflow" claim was wrong: `sr-only` (absolute) spans escaped a scrolling nav. Check `documentElement.scrollWidth` on every page and both widths, and give scroll containers `position: relative`.

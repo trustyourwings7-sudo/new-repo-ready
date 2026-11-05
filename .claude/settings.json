@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "enabledMcpjsonServers": ["context7", "playwright"],
   "permissions": {
     "deny": [
+      "mcp__Composio",
       "mcp__Gmail__send_message",
       "mcp__Gmail__reply",
       "mcp__Gmail__forward",
@@ -25,7 +25,33 @@
       "Read(./**/.env.local)",
       "Read(./**/.env.*.local)",
       "Read(./**/.env.production)",
-      "Read(~/.claude/.credentials.json)"
+      "Read(~/.claude/.credentials.json)",
+      "mcp__tavily__tavily_crawl",
+      "mcp__tavily__tavily_research",
+      "mcp__firecrawl__firecrawl_crawl",
+      "mcp__firecrawl__firecrawl_agent",
+      "mcp__firecrawl__firecrawl_interact",
+      "mcp__firecrawl__firecrawl_monitor_create",
+      "mcp__firecrawl__firecrawl_monitor_update",
+      "mcp__firecrawl__firecrawl_monitor_run"
     ]
+  },
+  "enabledMcpjsonServers": [
+    "context7",
+    "playwright",
+    "exa",
+    "tavily",
+    "firecrawl",
+    "supabase"
+  ],
+  "enabledPlugins": {
+    "claude-for-financial-advisors@synced": false,
+    "productivity@synced": false,
+    "brand-voice@synced": false,
+    "data@synced": false,
+    "enterprise-search@synced": false,
+    "video-cleanup@synced": false,
+    "cowork-plugin-management@synced": false,
+    "operations@synced": false
   }
 }

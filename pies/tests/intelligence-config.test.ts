@@ -52,22 +52,42 @@ describe("PIES skills", () => {
 });
 
 describe("MCP configuration", () => {
-  it("contains only the approved free, keyless servers", () => {
-    expect(Object.keys(mcp.mcpServers).sort()).toEqual(["context7", "playwright"]);
+  type Server = { command?: string; args?: string[]; env?: Record<string, string>; headers?: unknown; url?: string; type?: string };
+  const servers = mcp.mcpServers as Record<string, Server>;
+
+  it("contains only the approved servers", () => {
+    expect(Object.keys(servers).sort()).toEqual(["context7", "exa", "firecrawl", "playwright", "supabase", "tavily"]);
   });
 
-  it("pins exact package versions and carries no secrets", () => {
-    for (const [name, s] of Object.entries<{ command: string; args: string[]; env?: Record<string, string>; headers?: unknown; url?: string }>(mcp.mcpServers)) {
-      const pkg = s.args.find((a) => a.startsWith("@"));
+  it("pins exact package versions for every stdio server", () => {
+    for (const [name, s] of Object.entries(servers)) {
+      if (s.type === "http") continue;
+      const pkg = (s.args ?? []).find((a) => /^(@[\w-]+\/)?[\w.-]+@/.test(a));
       expect(pkg, name).toMatch(/@\d+\.\d+\.\d+$/);
-      expect(s.env, name).toBeUndefined();
-      expect(s.headers, name).toBeUndefined();
-      expect(JSON.stringify(s), name).not.toMatch(/api[_-]?key|token|secret|password|bearer/i);
     }
   });
 
+  it("references secrets only as ${ENV_VAR}; no literal key anywhere", () => {
+    for (const [name, s] of Object.entries(servers)) {
+      for (const [k, v] of Object.entries(s.env ?? {})) {
+        expect(v, `${name}.${k}`).toMatch(/^\$\{[A-Z0-9_]+(:-)?\}$/);
+      }
+      expect(s.headers, name).toBeUndefined();
+      const flat = JSON.stringify({ ...s, env: undefined });
+      expect(flat, name).not.toMatch(/api[_-]?key=|token=|secret|password|bearer|sk-|fc-|tvly-/i);
+    }
+  });
+
+  it("Supabase MCP is read-only, docs-only, with no project or account access", () => {
+    const u = new URL(servers.supabase!.url!);
+    expect(u.origin).toBe("https://mcp.supabase.com");
+    expect(u.searchParams.get("read_only")).toBe("true");
+    expect(u.searchParams.get("features")).toBe("docs");
+    expect(u.searchParams.has("project_ref")).toBe(false);
+  });
+
   it("runs Playwright headless with an isolated (in-memory) profile", () => {
-    const args: string[] = mcp.mcpServers.playwright.args;
+    const args: string[] = servers.playwright!.args!;
     expect(args).toContain("--headless");
     expect(args).toContain("--isolated");
   });
@@ -81,6 +101,10 @@ describe("Claude Code permission guardrails", () => {
     "mcp__github__merge_pull_request",
     "mcp__playwright__browser_run_code_unsafe", "mcp__playwright__browser_evaluate", "mcp__playwright__browser_file_upload",
     "Read(./**/.env)", "Read(./**/.env.local)",
+    "mcp__Composio",
+    "mcp__tavily__tavily_crawl", "mcp__tavily__tavily_research",
+    "mcp__firecrawl__firecrawl_crawl", "mcp__firecrawl__firecrawl_agent", "mcp__firecrawl__firecrawl_interact",
+    "mcp__firecrawl__firecrawl_monitor_create", "mcp__firecrawl__firecrawl_monitor_update", "mcp__firecrawl__firecrawl_monitor_run",
   ])("denies %s", (rule) => {
     expect(deny).toContain(rule);
   });
@@ -89,5 +113,11 @@ describe("Claude Code permission guardrails", () => {
     expect(settings.permissions.allow ?? []).toEqual([]);
     expect(settings.enableAllProjectMcpServers).toBeUndefined();
     expect(settings.enabledMcpjsonServers.sort()).toEqual(Object.keys(mcp.mcpServers).sort());
+  });
+
+  it("keeps unrelated plugins (with failing or email-capable servers) disabled for this project", () => {
+    for (const p of ["claude-for-financial-advisors", "productivity", "brand-voice", "data", "enterprise-search", "video-cleanup", "cowork-plugin-management", "operations"]) {
+      expect(settings.enabledPlugins[`${p}@synced`], p).toBe(false);
+    }
   });
 });

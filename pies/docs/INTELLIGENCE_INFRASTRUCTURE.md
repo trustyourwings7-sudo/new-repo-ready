@@ -1,4 +1,8 @@
-# Intelligence Infrastructure (prepared 2026-11-05)
+# Intelligence Infrastructure (prepared 2026-11-05, updated same day)
+
+> **Update:** with the owner's approval, Exa, Tavily, Firecrawl and Supabase (read-only, docs-only) are now configured with keys referenced as environment variables only. Eight irrelevant plugins are disabled for this project (failing servers about 45 → 0), and Composio is denied. Step-by-step evidence is in [INTEGRATION_LOG.md](INTEGRATION_LOG.md). They become usable after the owner allowlists their hosts and adds free keys as environment variables.
+
+**Supabase upgrade path:** once a *development* project exists, change the URL to `…?project_ref=<dev-ref>&read_only=true&features=docs,database`. Never use a production project, never drop `read_only`, and update the test in `tests/intelligence-config.test.ts` in the same commit.
 
 Scope: developer and research tooling for **Claude Code sessions working on PIES**. This is not PIES runtime: nothing here runs on a schedule, holds a database credential, or is part of the deployed app. Phase 2 has not started, and no agent is active.
 

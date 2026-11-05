@@ -12,12 +12,12 @@ APP_PORT="${PIES_E2E_APP_PORT:-3131}"
 APP_PID=""
 cleanup() {
   [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null || true
-  pg_ctl -D "$WORK/data" -m immediate stop >/dev/null 2>&1 || true
+  "${RUN_AS[@]}" pg_ctl -D "$WORK/data" -m immediate stop >/dev/null 2>&1 || true
   rm -rf "$WORK"
 }
+RUN_AS=()
 trap cleanup EXIT
 
-RUN_AS=()
 if [ "$(id -u)" = "0" ]; then
   id pies_pg >/dev/null 2>&1 || useradd -r -M pies_pg
   chown -R pies_pg "$WORK"; chmod 755 "$WORK"

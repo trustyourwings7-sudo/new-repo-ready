@@ -27,6 +27,8 @@ Read this file first in every session. Update the **Lessons log** at the end of 
 
 ## Commands (run from `pies/`)
 - `pnpm check` — typecheck + unit tests + DB tests + build. Must pass before every commit.
+- `pnpm test:pipeline` — research runner e2e on throwaway Postgres + mock Exa/Firecrawl (no network, no keys).
+- `pnpm research` — the research runner itself. Refuses to call anything unless every live gate passes (docs/RUNNER.md).
 - `pnpm test:db` — needs local Postgres binaries. Uses a throwaway cluster in /tmp (a scratchpad under /tmp/claude-0 is not readable by the postgres user).
 - Use **pnpm**, not npm (npm 10.9 crashed during peer-dependency resolution here).
 
@@ -60,3 +62,8 @@ Read this file first in every session. Update the **Lessons log** at the end of 
 - 2026-11-05 — Settings are hot-reloaded: adding `mcp__Gmail__*` to deny removed all 24 Gmail tools mid-session. Verify a deny by watching the tool disappear, or with a harmless dummy (`.env` with a fake value), never by attempting the dangerous call.
 - 2026-11-05 — Nested project skills (`pies/.claude/skills`) are discovered only after a file under `pies/` is touched in the session.
 - 2026-11-05 — `ask` rules prompt even in auto mode, so they are the right gate for metered connector calls (an unattended run blocks instead of spending).
+- 2026-11-05 — Node's built-in TypeScript is strip-only: constructor parameter properties and enums crash it, while Vitest and Next compile them fine. Runner code must use plain fields; a test now loads the runner modules in bare Node.
+- 2026-11-05 — `automation_execute` replays the stored response for a reused request id. Day-stable request ids made a same-day retry receive the previous, already-closed run (`run_not_active`). Request ids need a per-invocation nonce; only budget idempotency keys stay day-stable.
+- 2026-11-05 — `pg_ctl` refuses to run as root, so the test scripts' cleanup silently leaked a Postgres server per run. Stop the cluster as its owner (`RUN_AS`), defined before the trap.
+- 2026-11-05 — A page with injected instructions can plant an address on its own domain; same-domain is not proof of legitimacy. Injection-flagged pages never supply a draft recipient.
+- 2026-11-05 — On a public repo, GitHub Actions logs are public. Runners print aggregate metrics only; details go to the database.

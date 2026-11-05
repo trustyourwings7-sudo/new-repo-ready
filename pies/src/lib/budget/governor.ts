@@ -34,8 +34,10 @@ export interface SpendRequest {
 }
 
 export class BudgetDeniedError extends Error {
-  constructor(public readonly reason: string) {
+  readonly reason: string;
+  constructor(reason: string) {
     super(`Budget governor denied operation: ${reason}`);
+    this.reason = reason;
     this.name = "BudgetDeniedError";
   }
 }

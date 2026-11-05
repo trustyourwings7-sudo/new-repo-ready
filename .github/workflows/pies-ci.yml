@@ -1,0 +1,42 @@
+name: PIES CI
+# Full quality gate: typecheck, unit tests, SQL tests on throwaway Postgres, build,
+# automation e2e, research-pipeline e2e. No secrets are used or needed.
+on:
+  pull_request:
+    paths: ["pies/**", ".github/workflows/pies-*.yml", ".mcp.json", ".claude/settings.json"]
+  push:
+    branches: ["claude/**"]
+    paths: ["pies/**", ".github/workflows/pies-*.yml", ".mcp.json", ".claude/settings.json"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pies-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: pies
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.23.x"
+      - name: Enable pnpm (corepack, pinned in package.json)
+        run: corepack enable
+      - name: PostgreSQL server binaries
+        run: |
+          ls -d /usr/lib/postgresql/*/bin || (sudo apt-get update && sudo apt-get install -y postgresql)
+          sudo systemctl stop postgresql || true
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"

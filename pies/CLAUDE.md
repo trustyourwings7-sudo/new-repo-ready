@@ -20,8 +20,9 @@ Read this file first in every session. Update the **Lessons log** at the end of 
 
 ## Tooling for Claude sessions (see docs/INTELLIGENCE_INFRASTRUCTURE.md)
 - Project skills live in `pies/.claude/skills/` (10). Use `security-review` before every PIES commit and `budget-guard` before any paid service.
-- MCP servers are in the repo-root `.mcp.json`: Context7 (docs) and Playwright (headless, isolated). Do not add servers that need keys, or that touch the database, without the owner's approval.
-- The repo-root `.claude/settings.json` denies Gmail sending, n8n publish/execute/agents, GitHub merge/delete, Playwright code-exec, and reading `.env*`. Never work around these denies.
+- MCP servers are in the repo-root `.mcp.json`: Context7 (docs), Playwright (headless, isolated) and Supabase (docs-only, read-only, no project). Web search and scraping use the claude.ai **Exa** and **Firecrawl** connectors; local duplicates and Tavily were removed. Do not add servers that need keys, or that touch the database, without the owner's approval.
+- The repo-root `.claude/settings.json` denies the **whole Gmail and Calendar servers**, n8n publish/execute/agents/delete/credentials, GitHub merge/delete/push/repo creation, session and scheduled-task creation, Drive/Adobe/Canva sharing, invites, comments, purchases and generative credits, Exa `agent_run`, Firecrawl crawl/agent/monitor, Playwright code-exec, and reading `.env*`. Metered research calls and outward GitHub writes are `ask` rules: they prompt even in auto mode. Never work around these rules.
+- These rules load only in a single-repo cloud session (or local session) whose checkout contains them. Project threads and scheduled tasks on the default branch do **not** get them (see `docs/INTEGRATION_LOG.md`).
 - Research output goes to `pies/intel/` (git-ignored). Never commit it.
 
 ## Commands (run from `pies/`)
@@ -55,3 +56,7 @@ Read this file first in every session. Update the **Lessons log** at the end of 
 - 2026-11-05 — Project-scoped `claude plugin disable --scope project` writes `enabledPlugins` into the repo settings: a durable way to drop irrelevant or failing plugin servers for this repo only.
 - 2026-11-05 — A server-level deny (`mcp__Composio`) removes every tool of that server immediately in the running session.
 - 2026-11-05 — The Phase 1 "no mobile overflow" claim was wrong: `sr-only` (absolute) spans escaped a scrolling nav. Check `documentElement.scrollWidth` on every page and both widths, and give scroll containers `position: relative`.
+- 2026-11-05 — Cloud sessions and scheduled tasks clone the repo's **default branch**. Config living only on a feature branch never loads there. Check the branch before trusting any repo rule.
+- 2026-11-05 — Settings are hot-reloaded: adding `mcp__Gmail__*` to deny removed all 24 Gmail tools mid-session. Verify a deny by watching the tool disappear, or with a harmless dummy (`.env` with a fake value), never by attempting the dangerous call.
+- 2026-11-05 — Nested project skills (`pies/.claude/skills`) are discovered only after a file under `pies/` is touched in the session.
+- 2026-11-05 — `ask` rules prompt even in auto mode, so they are the right gate for metered connector calls (an unattended run blocks instead of spending).

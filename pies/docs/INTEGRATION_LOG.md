@@ -40,3 +40,27 @@ Every step, result, failure and fix, in order. Status: ✅ verified · ⚠️ pa
 3. Supabase: create a Free organization and a project for PIES (the next phase needs it anyway).
 4. claude.ai → Settings → Connectors: disconnect Composio if unused.
 5. Start a **new session** in this repo so the plugin changes, deny rules and keys take effect. Then ask for: "retest all MCP servers per pies/docs/INTEGRATION_LOG.md".
+
+## Session 2026-11-05 (second): retest, consolidation, enforcement
+
+Rows 27–48 are in `docs/MCP_RETEST_2026-11-05.md`. Rows below continue from there.
+
+| # | Step | Result | Evidence / fix |
+|---|---|---|---|
+| 49 | Branch topology | ✅ `upbeat-carson` (PIES, 4 commits) and `funny-turing` (retest report, 1 commit) both fork from `fc17c83` = repo default branch `claude/inspiring-pasteur-hpkrv2`; no file overlap | `git merge-base`, `comm` on changed files |
+| 50 | Consolidate | ✅ `--no-ff` merge of `upbeat-carson` into `claude/funny-turing-yx41kh`; both histories kept; default branch untouched | merge commit `4f6c77a` |
+| 51 | Session type | ✅ single-repo **cloud session** (`origin web_claude_ai`, `anthropic_cloud`, auto mode), not a project thread | `get_session`; docs: repo `.claude/settings.json` and `.mcp.json` apply in this type only |
+| 52 | Deny rules enforced? | ✅ yes, live: on merge the session removed Gmail send/reply/forward/trash/delete_draft and GitHub merge/auto-merge/delete_file; after adding `mcp__Gmail__*` all 24 Gmail tools vanished | harness tool-removal notices |
+| 53 | `.env` read deny | ✅ `Read` and `cat` both refused on a dummy `pies/.env` (fake value, deleted after) | Docs: a script opening the file itself is **not** covered; not an OS boundary |
+| 54 | Plugin disables (`enabledPlugins: false`) | ⚠️ not applied live; ~50 plugin servers still listed. Docs: cloud sessions don't install repo-declared plugins; synced plugins come from the claude.ai account | 🔒 Disable unused plugins at account level, or recheck in a fresh session |
+| 55 | Scheduled tasks | ❌ **risk**: 1 enabled daily task (`trig_011oqFZEoLw6qgd7UwWikfc4`, other repo `my-personal-files`, Gmail drafts, n8n). Scheduled runs include all connectors by default and clone the default branch, so this repo's rules never protect them | 🔒 Owner decision (see final report) |
+| 56 | Gmail in unattended sessions | ⚠️ denied for every session of **this repo** that loads the settings. Not enforceable for other repos/default branch from here | 🔒 claude.ai → Connectors → Gmail: turn off send/reply/forward tools, or remove Gmail from the scheduled task |
+| 57 | Risky connectors inventoried | ✅ denied: Calendar (whole), Drive share/trash, Adobe invite/share/Stock licence/acrobat_proxy/boards_delete/font kits/generative expand, Canva comment/reply/publish/generate, GitHub create/fork repo, push_files, create_or_update_file, actions_run_trigger, claude-code-remote create_session/create_trigger/fire_trigger/send_message/send_later/computer folder/trust/watch_url, n8n delete/credential, Exa agent_run, Firecrawl agent/crawl/monitor/interact | `.claude/settings.json`; tests |
+| 58 | Metered calls | ✅ `ask` (prompts even in auto mode): Exa search/fetch, Firecrawl search/scrape/developer/research, Drive create/copy/update, GitHub comments/issues/PRs/reviews, trigger update/delete, Docs delete | |
+| 59 | Duplicates removed | ✅ `.mcp.json` now: context7, playwright, supabase. Exa/Firecrawl via claude.ai connectors; Tavily removed (no demonstrated need, needs a key) | tests updated first (40 red → green) |
+| 60 | Context7 | ❌ network policy: gateway 403 on CONNECT to `context7.com`, `mcp.context7.com`. One environment exists (`Default`), so the allowlist itself changed between sessions | 🔒 Environment → Network access → Allowed domains: add both, keep "Allow package managers" ticked |
+| 61 | n8n | ❌ connector returns 404 via Anthropic's MCP proxy (`CLIENT_HTTP_NOT_IMPLEMENTED`). It worked 2026-11-04 07:47Z for one write, then dropped; failed all of 2026-11-05 | 🔒 Probable n8n-side change (instance MCP access disabled, token rotated, or instance stopped). Check n8n Settings → MCP access, then reconnect the connector. No workflows or credentials touched |
+| 62 | Supabase | ⚠️ unchanged: OAuth pending; deliberately not connected | Do not approve OAuth until the Supabase phase |
+| 63 | Budget (budget-guard) | see final report table | |
+| 64 | Skills | ✅ all 10 discovered after touching `pies/` | session notice |
+| 65 | Tests | ✅ 155/155 unit tests | `pnpm test` |

@@ -18,9 +18,11 @@ You are doing research for PIES. **You are not a PIES agent**: do not call the a
 
 Tools, in order:
 1. Built-in WebSearch/WebFetch.
-2. `tavily_search` / `web_search_exa` when their keys are configured (free plans only; check remaining credits before large batches).
-3. `firecrawl_scrape` for single hard-to-parse pages.
+2. Free connector calls: `firecrawl_gov_search` (US government sources) and `firecrawl_find_tools` (catalogue only).
+3. Metered claude.ai connector calls, which prompt for approval every time (`ask` rules): `web_search_exa` / `web_fetch_exa` (Exa) and `firecrawl_search` (2 credits per 10 results) / `firecrawl_scrape` (1 credit per page). Use them only when 1 and 2 fail, one call at a time, and state the expected credit cost before calling.
 4. Playwright MCP for JavaScript-only pages.
+
+Tavily and the local Exa/Firecrawl servers were removed (2026-11-05); do not ask for their API keys.
 
 Crawl, agent, research and monitor tools are denied; do not try to work around that. Respect robots.txt and site terms; never log in, never bypass paywalls or CAPTCHAs. Never upgrade a plan or add billing (see `budget-guard`).
 

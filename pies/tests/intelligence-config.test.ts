@@ -56,7 +56,8 @@ describe("MCP configuration", () => {
   const servers = mcp.mcpServers as Record<string, Server>;
 
   it("contains only the approved servers", () => {
-    expect(Object.keys(servers).sort()).toEqual(["context7", "exa", "firecrawl", "playwright", "supabase", "tavily"]);
+    // Exa and Firecrawl come from the claude.ai connectors; local duplicates and keyed Tavily were removed (2026-11-05).
+    expect(Object.keys(servers).sort()).toEqual(["context7", "playwright", "supabase"]);
   });
 
   it("pins exact package versions for every stdio server", () => {
@@ -107,6 +108,43 @@ describe("Claude Code permission guardrails", () => {
     "mcp__firecrawl__firecrawl_monitor_create", "mcp__firecrawl__firecrawl_monitor_update", "mcp__firecrawl__firecrawl_monitor_run",
   ])("denies %s", (rule) => {
     expect(deny).toContain(rule);
+  });
+
+  // Whole servers removed from Claude's context: Gmail (unattended-send risk), Calendar (sends invites).
+  it.each(["mcp__Gmail__*", "mcp__plugin_claude-for-financial-advisors_google-calendar__*"])("denies the whole server %s", (rule) => {
+    expect(deny).toContain(rule);
+  });
+
+  // External communication, permission changes, purchases, destructive or autonomous actions.
+  it.each([
+    "mcp__Google_Drive__share_file", "mcp__Google_Drive__trash_file",
+    "mcp__Adobe__asset_invite_collaborators", "mcp__Adobe__asset_share_link", "mcp__Adobe__asset_license_and_download_stock",
+    "mcp__Adobe__acrobat_proxy", "mcp__Adobe__boards_delete",
+    "mcp__Canva__comment-on-design", "mcp__Canva__reply-to-comment", "mcp__Canva__publish-brand-template",
+    "mcp__github__create_repository", "mcp__github__fork_repository", "mcp__github__push_files", "mcp__github__actions_run_trigger",
+    "mcp__claude-code-remote__create_session", "mcp__claude-code-remote__create_trigger", "mcp__claude-code-remote__fire_trigger",
+    "mcp__claude-code-remote__send_message", "mcp__claude-code-remote__send_later", "mcp__claude-code-remote__request_computer_folder",
+    "mcp__n8n__delete_*",
+    "mcp__Exa__agent_run",
+    "mcp__Firecrawl__firecrawl_agent*", "mcp__Firecrawl__firecrawl_crawl*", "mcp__Firecrawl__firecrawl_monitor*", "mcp__Firecrawl__firecrawl_interact*",
+  ])("denies %s", (rule) => {
+    expect(deny).toContain(rule);
+  });
+
+  // Metered calls prompt even in auto mode, so an unattended run cannot spend credits.
+  it.each([
+    "mcp__Exa__web_search_exa", "mcp__Exa__web_fetch_exa",
+    "mcp__Firecrawl__firecrawl_search", "mcp__Firecrawl__firecrawl_scrape", "mcp__Firecrawl__firecrawl_developer_search",
+    "mcp__Firecrawl__firecrawl_research_*",
+    "mcp__github__add_issue_comment", "mcp__github__create_pull_request",
+    "mcp__claude-code-remote__update_trigger", "mcp__claude-code-remote__delete_trigger",
+  ])("asks before %s", (rule) => {
+    expect(settings.permissions.ask).toContain(rule);
+  });
+
+  it("never puts a rule in both deny and ask", () => {
+    const ask: string[] = settings.permissions.ask;
+    expect(ask.filter((r) => deny.includes(r))).toEqual([]);
   });
 
   it("grants no blanket allow rules", () => {

@@ -13,3 +13,8 @@ coverage/
 # Research output (may contain names of real people) and MCP artefacts
 intel/
 .playwright-mcp/
+
+# Private runner config (profile + queries) and reports: never commit
+/config.json
+/config.local.json
+/*.report.md

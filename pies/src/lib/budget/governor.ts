@@ -34,9 +34,27 @@ export interface SpendRequest {
 }
 
 export class BudgetDeniedError extends Error {
-  constructor(public readonly reason: string) {
+  readonly reason: string;
+  constructor(reason: string) {
     super(`Budget governor denied operation: ${reason}`);
+    this.reason = reason;
     this.name = "BudgetDeniedError";
+  }
+}
+
+/**
+ * Thrown by a paid operation that FAILED but may still have been charged by the
+ * provider (timeout, 5xx, unparseable 200). withBudget commits `chargedUsd` instead
+ * of releasing the reservation, then rethrows `original`. Under-counting is the unsafe direction.
+ */
+export class ChargedFailure extends Error {
+  readonly chargedUsd: number;
+  readonly original: unknown;
+  constructor(chargedUsd: number, original: unknown) {
+    super("operation failed after it may have been charged");
+    this.name = "ChargedFailure";
+    this.chargedUsd = chargedUsd;
+    this.original = original;
   }
 }
 
@@ -86,6 +104,10 @@ export async function withBudget<T>(
   try {
     outcome = await run();
   } catch (err) {
+    if (err instanceof ChargedFailure) {
+      await client.rpc("commit_usage", { p_usage_id: usageId, p_actual_usd: err.chargedUsd, p_user_id: req.userId ?? null });
+      throw err.original;
+    }
     await client.rpc("release_usage", { p_usage_id: usageId, p_user_id: req.userId ?? null });
     throw err;
   }

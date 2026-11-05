@@ -1,0 +1,53 @@
+name: PIES research run
+# The n8n replacement. Runs pies/scripts/run-pipeline.ts on a GitHub-hosted runner.
+#
+# ACTIVATION REQUIRES THE OWNER. Today this only runs when started by hand, and even then
+# the runner refuses to call any provider unless ALL of these hold:
+#   - repository secret PIES_LIVE_RESEARCH = 1
+#   - repository secret PIES_PRICES_CONFIRMED_ON = a date within the last 31 days
+#   - EXA_API_KEY and FIRECRAWL_API_KEY secrets exist
+#   - in the database: user_preferences.paid_operations_enabled, and each provider row in
+#     provider_configs is enabled AND pricing_verified (source URL + date), with monthly caps
+# To schedule it, uncomment `schedule` below (owner decision; see pies/docs/RUNNER.md).
+#
+# PUBLIC REPOSITORY: run logs are public. The runner prints aggregate metrics only;
+# never add steps that print the report, upload it as an artifact, or echo secrets.
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "17 5 * * *"   # 05:17 UTC = 07:17 Kigali; off the hour to avoid queue delays
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pies-research
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: pies-production
+    defaults:
+      run:
+        working-directory: pies
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22.23.x"
+      - run: corepack enable && pnpm install --frozen-lockfile --prod=false
+      - name: Research run (metrics only)
+        run: node --no-warnings scripts/run-pipeline.ts && echo "(metrics above; details are in PIES, never in this public log)"
+        env:
+          PIES_PIPELINE_CONFIG_JSON: ${{ secrets.PIES_PIPELINE_CONFIG_JSON }}
+          PIES_AUTOMATION_DATABASE_URL: ${{ secrets.PIES_AUTOMATION_DATABASE_URL }}
+          PIES_AUTOMATION_INTEGRATION_ID: ${{ secrets.PIES_AUTOMATION_INTEGRATION_ID }}
+          PIES_OWNER_USER_ID: ${{ secrets.PIES_OWNER_USER_ID }}
+          PIES_LIVE_RESEARCH: ${{ secrets.PIES_LIVE_RESEARCH }}
+          PIES_PRICES_CONFIRMED_ON: ${{ secrets.PIES_PRICES_CONFIRMED_ON }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}

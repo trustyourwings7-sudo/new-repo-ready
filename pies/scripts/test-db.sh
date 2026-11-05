@@ -7,10 +7,10 @@ PGBIN="${PGBIN:-$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -
 export PATH="$PGBIN:$PATH"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/pies-db.XXXXXX")"
 PORT="${PIES_TEST_PG_PORT:-54329}"
-cleanup() { pg_ctl -D "$WORK/data" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$WORK"; }
+cleanup() { "${RUN_AS[@]}" pg_ctl -D "$WORK/data" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$WORK"; }
+RUN_AS=()
 trap cleanup EXIT
 
-RUN_AS=()
 if [ "$(id -u)" = "0" ]; then
   id pies_pg >/dev/null 2>&1 || useradd -r -M pies_pg
   chown -R pies_pg "$WORK"; chmod 755 "$WORK"

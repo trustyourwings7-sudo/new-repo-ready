@@ -1,17 +1,28 @@
 import { ESTIMATE_SAFETY_FACTOR } from "../budget/constants.ts";
 
 /**
- * Provider prices used for budget reservations. The governor reserves the
- * estimate BEFORE a call and commits the actual cost after it.
+ * Provider prices used for PIES's OWN accounting. The database governor reserves an
+ * estimate before each call and commits the actual cost after it.
  *
- * Rules:
- * - Use the highest price among conflicting sources (fail safe).
- * - Firecrawl's free plan cannot be billed (HTTP 402 at the limit), but its
- *   credits are still scarce, so they are charged at a conservative shadow
- *   price. That keeps ONE atomic counter (the database governor) for every
- *   provider, instead of a second quota store that could drift.
- * - `verified` is false until the owner confirms the figure on the official
- *   pricing page while signed in. Unverified prices block live calls.
+ * What this does NOT do: it does not limit what a provider can bill. Provider-side
+ * limits exist only in each provider's account (Firecrawl's free plan stops at its
+ * allowance with HTTP 402; Exa bills a card on file once free credits are used).
+ * The internal cap stops PIES from making further calls; it cannot undo a charge.
+ *
+ * Billing semantics used here (official docs, retrieved 2026-11-05):
+ * - Exa /search: $7 per 1,000 requests (type "auto"), PLUS $1 per 1,000 pages of
+ *   contents; text for N results is N content pages. Results above 10 cost extra
+ *   (PIES caps at 10). The response's costDollars is Exa's own figure.
+ *   https://exa.ai/docs/admin/pricing
+ * - Firecrawl /v2/scrape: 1 credit per returned document; +1 credit per PDF page;
+ *   JSON/PII/lockdown/injection-check options add credits (PIES uses none of them);
+ *   cached results still cost 1; enhanced/auto proxy escalation costs nothing extra;
+ *   no document returned = 0 credits. https://docs.firecrawl.dev/billing
+ * - Neither provider documents billing for timeouts or 5xx: PIES counts them as billed.
+ *
+ * Firecrawl's free plan cannot be charged money, but credits are scarce, so they carry a
+ * conservative shadow price (Hobby plan, highest reported figure) and share the same
+ * atomic counter as Exa.
  */
 export interface ProviderPrice {
   provider: "exa" | "firecrawl";
@@ -20,40 +31,54 @@ export interface ProviderPrice {
   source: string;
   retrieved: string;
   confidence: "Certain" | "Likely" | "Guessing";
-  verified: boolean;
 }
 
 export const PRICES = {
-  /** Exa /search, type "auto", up to 10 results with text. $7 per 1,000 requests is the highest figure Exa publishes. */
-  exaSearch: {
+  exaSearchRequest: {
     provider: "exa",
-    unit: "search request",
+    unit: "search request (type auto)",
     usdPerUnit: 0.007,
-    source: "https://exa.ai/pricing (via Exa-published comparison pages; official page not reachable from the build environment)",
+    source: "https://exa.ai/docs/admin/pricing",
     retrieved: "2026-11-05",
     confidence: "Likely",
-    verified: false,
   },
-  /** Firecrawl /v2/scrape: 1 credit per page. Shadow price = Hobby plan, highest reported figure ($29 / 3,000 credits). */
+  exaContentPage: {
+    provider: "exa",
+    unit: "content page (text of one result)",
+    usdPerUnit: 0.001,
+    source: "https://exa.ai/docs/admin/pricing",
+    retrieved: "2026-11-05",
+    confidence: "Likely",
+  },
   firecrawlCredit: {
     provider: "firecrawl",
-    unit: "credit",
+    unit: "credit (shadow price)",
     usdPerUnit: 0.0097,
-    source: "https://docs.firecrawl.dev/billing (1 credit/scrape, 2 credits/10 search results, free plan has no pay-as-you-go)",
+    source: "https://docs.firecrawl.dev/billing",
     retrieved: "2026-11-05",
     confidence: "Likely",
-    verified: false,
   },
 } as const satisfies Record<string, ProviderPrice>;
 
-/** Firecrawl credit cost per operation (official billing docs). */
-export const FIRECRAWL_CREDITS = { scrapePage: 1, searchPer10Results: 2 } as const;
+/** Credits reserved per scrape. 1 is the documented base; the margin covers one surprise add-on. */
+export const FIRECRAWL_RESERVE_CREDITS = 2;
+/** A reported cost above this multiple of the reservation is treated as a pricing change: stop the run. */
+export const UNEXPECTED_COST_MULTIPLE = 3;
 
-export function reserveUsd(units: number, price: ProviderPrice): number {
-  if (!Number.isFinite(units) || units < 0) throw new RangeError("units must be a non-negative finite number");
-  return Math.ceil(Number((units * price.usdPerUnit * ESTIMATE_SAFETY_FACTOR * 1e6).toFixed(4))) / 1e6;
+const ceil6 = (usd: number) => Math.ceil(Number((usd * 1e6).toFixed(4))) / 1e6;
+
+/** List-price cost of one Exa search returning up to `results` results with text. */
+export function exaSearchListUsd(results: number): number {
+  if (!Number.isInteger(results) || results < 0 || results > 10) throw new RangeError("results must be an integer 0..10");
+  return ceil6(PRICES.exaSearchRequest.usdPerUnit + results * PRICES.exaContentPage.usdPerUnit);
 }
 
-export function actualUsd(units: number, price: ProviderPrice): number {
-  return Math.ceil(Number((units * price.usdPerUnit * 1e6).toFixed(4))) / 1e6;
+export function firecrawlListUsd(credits: number): number {
+  if (!Number.isFinite(credits) || credits < 0) throw new RangeError("credits must be a non-negative finite number");
+  return ceil6(credits * PRICES.firecrawlCredit.usdPerUnit);
+}
+
+/** Reservation = worst-case list price x safety factor. */
+export function withSafety(usd: number): number {
+  return ceil6(usd * ESTIMATE_SAFETY_FACTOR);
 }

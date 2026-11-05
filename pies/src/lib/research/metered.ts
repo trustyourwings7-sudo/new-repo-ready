@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { BudgetDeniedError, withBudget, type RpcClient } from "../budget/governor.ts";
+import { BudgetDeniedError, ChargedFailure, withBudget, type RpcClient } from "../budget/governor.ts";
+import { ProviderError } from "./http.ts";
 import type { ExaSearch, SearchOutcome, SearchProvider } from "./exa.ts";
 import type { ExtractedPage, ExtractProvider, FirecrawlExtract } from "./firecrawl.ts";
-import { actualUsd, PRICES, reserveUsd } from "./pricing.ts";
+import { exaSearchListUsd, FIRECRAWL_RESERVE_CREDITS, firecrawlListUsd, UNEXPECTED_COST_MULTIPLE, withSafety } from "./pricing.ts";
 
 /**
  * Wraps providers so that EVERY call is (1) under a per-run cap, (2) paced to the
@@ -17,6 +18,18 @@ export class RunCapReached extends Error {
     super(`per-run cap reached: ${what}`);
     this.what = what;
     this.name = "RunCapReached";
+  }
+}
+
+/** The provider reported a cost far above the reservation: pricing changed or was misread. Stop. */
+export class UnexpectedCost extends Error {
+  readonly reportedUsd: number;
+  readonly reservedUsd: number;
+  constructor(reportedUsd: number, reservedUsd: number) {
+    super(`unexpected provider cost: reported $${reportedUsd} vs reserved $${reservedUsd}`);
+    this.name = "UnexpectedCost";
+    this.reportedUsd = reportedUsd;
+    this.reservedUsd = reservedUsd;
   }
 }
 
@@ -58,10 +71,14 @@ export interface MeterStats {
   reservedUsd: number;
   committedUsd: number;
   denied: string[];
+  /** Calls whose recorded cost exceeded the reservation. */
+  overruns: number;
+  /** Failed calls charged at the reservation because the provider may have billed them. */
+  chargedFailures: number;
 }
 
 export class MeteredResearch {
-  readonly stats: MeterStats = { searches: 0, extractions: 0, reservedUsd: 0, committedUsd: 0, denied: [] };
+  readonly stats: MeterStats = { searches: 0, extractions: 0, reservedUsd: 0, committedUsd: 0, denied: [], overruns: 0, chargedFailures: 0 };
   private readonly exaPacer: Pacer;
   private readonly fcPacer: Pacer;
 
@@ -82,28 +99,39 @@ export class MeteredResearch {
   async searchOnce(query: string, numResults: number): Promise<SearchOutcome> {
     if (this.stats.searches >= this.ctx.caps.searches) throw new RunCapReached("searches");
     this.stats.searches++;
-    const estimate = reserveUsd(1, PRICES.exaSearch);
+    const n = Math.min(Math.max(Math.trunc(numResults), 1), 10);
+    const list = exaSearchListUsd(n); // worst case: every result returns text
     await this.exaPacer.wait();
-    return this.metered("search", this.search.name, `search:${h(query)}`, estimate, async () => {
-      const out = await this.search.search(query, numResults);
-      const cost = out.reportedUsd ?? actualUsd(1, PRICES.exaSearch);
-      return { result: out, actualUsd: cost };
+    return this.metered("search", this.search.name, `search:${h(`${n}:${query}`)}`, withSafety(list), list, async () => {
+      const out = await this.search.search(query, n);
+      // Exa's own figure when present and sane; otherwise list price for what came back.
+      const listForReturned = exaSearchListUsd(Math.min(out.hits.length + (out.dropped ?? 0), 10));
+      return { result: out, actualUsd: out.reportedUsd ?? listForReturned };
     });
   }
 
   async extractOnce(url: string): Promise<ExtractedPage> {
     if (this.stats.extractions >= this.ctx.caps.extractions) throw new RunCapReached("extractions");
     this.stats.extractions++;
-    const estimate = reserveUsd(1, PRICES.firecrawlCredit);
+    const list = firecrawlListUsd(FIRECRAWL_RESERVE_CREDITS);
     await this.fcPacer.wait();
-    return this.metered("extract", this.extract.name, `extract:${h(url)}`, estimate, async () => {
+    return this.metered("extract", this.extract.name, `extract:${h(url)}`, withSafety(list), list, async () => {
       const page = await this.extract.extract(url);
-      const credits = page.reportedCredits ?? 1;
-      return { result: page, actualUsd: actualUsd(credits, PRICES.firecrawlCredit) };
+      // No reported credits: assume the documented 1 for a returned document, 0 for none.
+      const credits = page.reportedCredits ?? (page.markdown ? 1 : 0);
+      return { result: page, actualUsd: firecrawlListUsd(credits) };
     });
   }
 
-  private async metered<T>(operation: string, provider: string, key: string, estimate: number, run: () => Promise<{ result: T; actualUsd: number }>): Promise<T> {
+  private async metered<T>(
+    operation: string,
+    provider: string,
+    key: string,
+    reserve: number,
+    chargeOnUncertainFailure: number,
+    run: () => Promise<{ result: T; actualUsd: number }>,
+  ): Promise<T> {
+    let overrun: UnexpectedCost | null = null;
     try {
       const result = await withBudget(
         this.ctx.rpc,
@@ -111,18 +139,32 @@ export class MeteredResearch {
           category: "search",
           provider,
           operation,
-          estimatedUsd: estimate,
+          estimatedUsd: reserve,
           idempotencyKey: `${this.ctx.runKey}:${key}`,
           userId: this.ctx.userId,
           ...(this.ctx.agentRunId ? { agentRunId: this.ctx.agentRunId } : {}),
         },
         async () => {
-          this.stats.reservedUsd += estimate;
-          const out = await run();
+          this.stats.reservedUsd += reserve;
+          let out: { result: T; actualUsd: number };
+          try {
+            out = await run();
+          } catch (err) {
+            if (err instanceof ProviderError && err.possiblyBilled) {
+              // Timeout/5xx/garbled 200: the provider may have processed it. Record it as spent.
+              this.stats.chargedFailures++;
+              this.stats.committedUsd += chargeOnUncertainFailure;
+              throw new ChargedFailure(chargeOnUncertainFailure, err);
+            }
+            throw err; // definite refusal (4xx): released, not charged
+          }
+          if (out.actualUsd > reserve) this.stats.overruns++;
+          if (out.actualUsd > reserve * UNEXPECTED_COST_MULTIPLE) overrun = new UnexpectedCost(out.actualUsd, reserve);
           this.stats.committedUsd += out.actualUsd;
-          return out;
+          return out; // committed as reported, even when above the reservation
         },
       );
+      if (overrun) throw overrun;
       return result;
     } catch (err) {
       if (err instanceof BudgetDeniedError) this.stats.denied.push(`${operation}:${err.reason}`);

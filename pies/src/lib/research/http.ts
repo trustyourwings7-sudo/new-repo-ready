@@ -29,6 +29,14 @@ export class ProviderError extends Error {
   get retryable() {
     return this.failure === "timeout" || this.failure === "rate_limited" || this.failure === "server_error" || this.failure === "network_error";
   }
+  /**
+   * Could the provider have charged for this attempt? Neither Exa nor Firecrawl documents
+   * billing for timeouts or 5xx, so those count as possibly billed. A 200 with an
+   * unparseable body was certainly processed. 4xx refusals (400/401/402/403/429) were not.
+   */
+  get possiblyBilled() {
+    return this.failure === "timeout" || this.failure === "server_error" || this.failure === "network_error" || this.failure === "invalid_response";
+  }
 }
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
@@ -39,6 +47,11 @@ export interface HttpOptions {
   timeoutMs?: number;
   /** Retries after the first attempt. Kept small: every attempt may cost credits. */
   maxRetries?: number;
+  /**
+   * Failures that may be retried. Paid calls pass ["rate_limited"] only: a retry after a
+   * timeout or 5xx could be billed twice, because the first attempt may have been processed.
+   */
+  retryOn?: ProviderFailure[];
   /** Injected for tests. */
   sleep?: (ms: number) => Promise<void>;
 }
@@ -57,6 +70,7 @@ export async function postJson(url: string, headers: Record<string, string>, bod
   const fetchImpl = opts.fetchImpl ?? (globalThis.fetch as FetchLike);
   const sleep = opts.sleep ?? defaultSleep;
   const maxRetries = Math.min(Math.max(opts.maxRetries ?? 1, 0), 3);
+  const canRetry = (e: ProviderError) => e.retryable && (!opts.retryOn || opts.retryOn.includes(e.failure));
   let last: ProviderError | null = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -72,7 +86,7 @@ export async function postJson(url: string, headers: Record<string, string>, bod
       });
       if (!res.ok) {
         last = new ProviderError(opts.provider, classify(res.status), res.status);
-        if (!last.retryable) throw last;
+        if (!canRetry(last)) throw last;
         continue;
       }
       try {
@@ -82,10 +96,11 @@ export async function postJson(url: string, headers: Record<string, string>, bod
       }
     } catch (err) {
       if (err instanceof ProviderError) {
-        if (!err.retryable) throw err;
+        if (!canRetry(err)) throw err;
         last = err;
       } else {
         last = new ProviderError(opts.provider, ctrl.signal.aborted ? "timeout" : "network_error", null);
+        if (!canRetry(last)) throw last;
       }
     } finally {
       clearTimeout(timer);

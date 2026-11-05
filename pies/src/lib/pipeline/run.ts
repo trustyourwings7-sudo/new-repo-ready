@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { BudgetDeniedError } from "../budget/governor.ts";
 import { ProviderError } from "../research/http.ts";
-import { MeteredResearch, RunCapReached } from "../research/metered.ts";
+import { MeteredResearch, RunCapReached, UnexpectedCost } from "../research/metered.ts";
 import type { RobotsPolicy } from "../research/robots.ts";
 import { contentHash, dedupeKey, normalizeUrl, siteOf } from "../research/url.ts";
 import { draftableContact, extractContacts, type PublicContact } from "./contacts.ts";
 import { buildDraft, safeTitle } from "./outreach.ts";
 import { prioritize, qualify, type Qualification, type VerifiedProfile } from "./qualify.ts";
 import type { PipelineSink } from "./sink.ts";
+import { classifySource, sourceTypeFor, type SourceAssessment } from "./source.ts";
 import { extractFacts, verificationStatus, type PageFacts, type VerificationStatus } from "./verify.ts";
 
 /**
@@ -34,6 +35,10 @@ export interface PipelineConfig {
   queries: QuerySpec[];
   /** Skip hosts that are known aggregators or blocked by owner policy. */
   excludeHosts?: string[];
+  /** Hosts the owner has confirmed as official publishers (exact host or parent domain). */
+  officialDomains?: string[];
+  /** Extra hosts to treat as third-party aggregators. */
+  aggregators?: string[];
 }
 
 export interface CandidateResult {
@@ -43,7 +48,10 @@ export interface CandidateResult {
   status: "persisted" | "rejected" | "skipped" | "failed";
   reason?: string;
   verification?: VerificationStatus;
+  source?: SourceAssessment;
   facts?: PageFacts;
+  qualified?: boolean;
+  usefulDraft?: boolean;
   q?: Qualification;
   contacts?: PublicContact[];
   draft?: ReturnType<typeof buildDraft>;
@@ -62,9 +70,25 @@ export interface PipelineReport {
     skipped: number;
     failed: number;
     drafts: number;
+    sourcesOfficial: number;
+    sourcesThirdParty: number;
+    sourcesUnverified: number;
+    /** Saved, not ineligible, score >= 50. */
+    qualified: number;
+    /** Draft with a recipient taken from an official, injection-free page, and a known deadline. */
+    usefulDrafts: number;
     reservedUsd: number;
     committedUsd: number;
+    overruns: number;
+    chargedFailures: number;
   };
+  /**
+   * blocked     stopped before any page was extracted (budget, gate, auth, quota)
+   * empty       ran, saved nothing
+   * low_yield   saved something, but no qualified opportunity on a verified official source
+   * productive  at least one qualified opportunity on a verified official source
+   */
+  outcome: "blocked" | "empty" | "low_yield" | "productive";
   stoppedEarly: string | null;
   candidates: CandidateResult[];
   markdown: string;
@@ -99,6 +123,7 @@ export async function runPipeline(
   const stop = (err: unknown): boolean => {
     if (err instanceof BudgetDeniedError) stoppedEarly = `budget: ${err.reason}`;
     else if (err instanceof RunCapReached) stoppedEarly = err.message;
+    else if (err instanceof UnexpectedCost) stoppedEarly = err.message;
     else if (err instanceof ProviderError && (err.failure === "quota_exhausted" || err.failure === "unauthorized")) stoppedEarly = err.message;
     return stoppedEarly !== null;
   };
@@ -145,13 +170,15 @@ export async function runPipeline(
     }
     const text = page.markdown || c.snippet;
     const facts = extractFacts(text, config.today);
-    const verification = verificationStatus(Boolean(page.markdown), page.statusCode, facts);
+    const source = classifySource(c.url, { fetched: Boolean(page.markdown), statusCode: page.statusCode, injection: facts.injectionSignals.length > 0 }, config);
+    const verification = verificationStatus(source, facts);
     const contacts = extractContacts(text, c.url);
-    // A page with instruction-like text can plant an address on its own domain: never draft to it.
-    const contact = facts.injectionSignals.length ? null : draftableContact(contacts);
+    // Draft recipients come only from official, injection-free pages (injection makes a page
+    // "unverified"). A third-party page's addresses stay listed for review, never addressed.
+    const contact = source.cls === "official" ? draftableContact(contacts) : null;
     const q = qualify(facts, text, config.profile, { today: config.today, strategicFit: c.spec.strategicFit, hasPublicContact: Boolean(contact) });
     const title = safeTitle(page.title || c.title, facts.injectionSignals.length > 0);
-    const row: CandidateResult = { url: c.url, title, spec: c.spec, status: "rejected", verification, facts, q, contacts };
+    const row: CandidateResult = { url: c.url, title, spec: c.spec, status: "rejected", verification, source, facts, q, contacts };
     candidates.push(row);
     if (q.eligibility === "ineligible") {
       row.reason = q.gateFailures.join("; ");
@@ -171,7 +198,7 @@ export async function runPipeline(
         dedupe_key: dedupeKey(c.url),
       });
       const evidence = [
-        `verification: ${verification}`,
+        `verification: ${verification}; source: ${source.cls} (${source.basis}, ${source.confidence})`,
         facts.deadline ? `deadline (${facts.deadline.confidence}): "${facts.deadline.quote}"` : "deadline: not found",
         facts.maxAge ? `age (${facts.maxAge.confidence}): "${facts.maxAge.quote}"` : null,
         facts.applicationFee ? `fee: "${facts.applicationFee.quote}"` : null,
@@ -181,7 +208,7 @@ export async function runPipeline(
         run_id: runId,
         opportunity_id: opp.opportunity_id,
         url: c.url,
-        source_type: page.markdown ? "official" : "search_result",
+        source_type: sourceTypeFor(source.cls),
         evidence_excerpt: evidence.slice(0, 5000),
         content_hash: contentHash(text),
       });
@@ -196,6 +223,8 @@ export async function runPipeline(
         priority: q.total >= 70 ? 1 : q.total >= 50 ? 2 : 3,
       });
       row.status = "persisted";
+      row.qualified = q.total >= 50;
+      row.usefulDraft = Boolean(row.draft?.to && facts.deadline && source.cls === "official");
     } catch (err) {
       row.status = "failed";
       row.reason = errText(err);
@@ -214,18 +243,29 @@ export async function runPipeline(
     skipped: candidates.filter((c) => c.status === "skipped").length,
     failed: candidates.filter((c) => c.status === "failed").length,
     drafts: candidates.filter((c) => c.draft).length,
+    sourcesOfficial: candidates.filter((c) => c.source?.cls === "official").length,
+    sourcesThirdParty: candidates.filter((c) => c.source?.cls === "third_party").length,
+    sourcesUnverified: candidates.filter((c) => c.source?.cls === "unverified").length,
+    qualified: candidates.filter((c) => c.qualified).length,
+    usefulDrafts: candidates.filter((c) => c.usefulDraft).length,
     reservedUsd: round6(meter.stats.reservedUsd),
     committedUsd: round6(meter.stats.committedUsd),
+    overruns: meter.stats.overruns,
+    chargedFailures: meter.stats.chargedFailures,
   };
-  const markdown = renderReport(config, m, ranked.map((r) => r.item), candidates, stoppedEarly);
+  const productive = candidates.some((c) => c.qualified && c.verification === "verified");
+  const outcome: PipelineReport["outcome"] =
+    m.extracted === 0 && stoppedEarly ? "blocked" : m.persisted === 0 ? "empty" : productive ? "productive" : "low_yield";
+  const markdown = renderReport(config, m, outcome, ranked.map((r) => r.item), candidates, stoppedEarly);
   try {
-    await exec("task.create", { run_id: runId, title: `PIES research report ${config.today}: ${m.persisted} new, ${m.rejected} rejected`, description: markdown.slice(0, 4000), priority: 2 });
+    await exec("task.create", { run_id: runId, title: `PIES research report ${config.today}: ${outcome}, ${m.qualified} qualified, ${m.persisted} saved`, description: markdown.slice(0, 4000), priority: 2 });
   } catch {
     /* the report is still returned to the caller */
   }
-  const failedRun = m.persisted === 0 && (m.failed > 0 || stoppedEarly !== null);
+  // An empty run is a successful run with nothing to show: reported as "empty", not as a failure.
+  const failedRun = outcome === "blocked" || (m.persisted === 0 && m.failed > 0);
   await exec("run.finish", { run_id: runId, status: failedRun ? "failed" : "succeeded", ...(failedRun ? { error: (stoppedEarly ?? "all candidates failed").slice(0, 500) } : {}) });
-  return { runKey: config.runKey, metrics: m, stoppedEarly, candidates, markdown };
+  return { runKey: config.runKey, metrics: m, outcome, stoppedEarly, candidates, markdown };
 }
 
 function errText(err: unknown): string {
@@ -236,24 +276,28 @@ const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 function taskBody(c: CandidateResult): string {
   const q = c.q!;
   const lines = [
+    "REVIEW ONLY. Nothing here is verified as true or approved for use until you check it.",
     `Source: ${c.url}`,
+    `Source class: ${c.source?.cls} (${c.source?.basis}, ${c.source?.confidence})`,
     `Verification: ${c.verification}`,
     `Score ${q.total}/100 [rules v1]: eligibility ${q.parts.eligibility}/25, experience ${q.parts.experience}/20, value ${q.parts.value}/20, strategic ${q.parts.strategic}/15, access ${q.parts.access}/10, timing ${q.parts.timing}/10`,
     `Eligibility: ${q.eligibility} (owner confirms; automation never marks eligible)`,
     q.missing.length ? `Missing: ${q.missing.join(", ")}` : null,
     c.facts?.deadline ? `Deadline ${c.facts.deadline.value}: "${c.facts.deadline.quote}"` : "Deadline: not found on page",
-    c.contacts?.length ? `Public contacts on page: ${c.contacts.map((x) => `${x.value}${x.sameDomain ? "" : " (other domain, not used)"}`).join(", ")}` : "Public contacts: none on page",
-    c.draft ? `\nDRAFT (not sent; PIES cannot send)\nTo: ${c.draft.to ?? "(no verified address)"}\nSubject: ${c.draft.subject}\n\n${c.draft.body}` : null,
+    c.contacts?.length ? `Public contacts on page (unverified; confirm before any use): ${c.contacts.map((x) => `${x.value}${x.sameDomain ? "" : " (other domain, not used)"}`).join(", ")}` : "Public contacts: none on page",
+    c.draft ? `\nDRAFT FOR REVIEW (not sent; PIES has no send path; needs your edit and approval)\nTo: ${c.draft.to ?? "(no address from an official source)"}\nSubject: ${c.draft.subject}\n\n${c.draft.body}` : null,
   ];
   return lines.filter(Boolean).join("\n");
 }
 
-function renderReport(config: PipelineConfig, m: PipelineReport["metrics"], ranked: CandidateResult[], all: CandidateResult[], stopped: string | null): string {
+function renderReport(config: PipelineConfig, m: PipelineReport["metrics"], outcome: PipelineReport["outcome"], ranked: CandidateResult[], all: CandidateResult[], stopped: string | null): string {
   const out = [
     `# PIES research report ${config.today}`,
     "",
-    `Queries ${m.queries} · hits ${m.hits} · duplicates ${m.duplicates} · extracted ${m.extracted} · verified ${m.verified} · saved ${m.persisted} · rejected ${m.rejected} · skipped ${m.skipped} · failed ${m.failed} · drafts ${m.drafts}`,
-    `Spend: reserved $${m.reservedUsd.toFixed(4)}, committed $${m.committedUsd.toFixed(4)} (search category)`,
+    `Outcome: **${outcome}** · qualified ${m.qualified} · useful drafts ${m.usefulDrafts} (review only)`,
+    `Sources: official ${m.sourcesOfficial} · third-party ${m.sourcesThirdParty} · unverified ${m.sourcesUnverified} · verified ${m.verified}`,
+    `Queries ${m.queries} · hits ${m.hits} · duplicates ${m.duplicates} · extracted ${m.extracted} · saved ${m.persisted} · rejected ${m.rejected} · skipped ${m.skipped} · failed ${m.failed} · drafts ${m.drafts}`,
+    `PIES accounting (not a provider bill): reserved $${m.reservedUsd.toFixed(4)}, recorded $${m.committedUsd.toFixed(4)}, overruns ${m.overruns}, failures charged ${m.chargedFailures}`,
     stopped ? `Stopped early: ${stopped}` : null,
     "",
     "## Priority list",

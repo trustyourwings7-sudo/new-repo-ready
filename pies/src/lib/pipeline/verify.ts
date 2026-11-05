@@ -147,10 +147,13 @@ export function extractFacts(text: string, today: string): PageFacts {
 
 export type VerificationStatus = "verified" | "partially_verified" | "unverified";
 
-/** Verified = official page fetched (2xx) AND the deadline is quoted from it. */
-export function verificationStatus(fetched: boolean, statusCode: number | null, facts: PageFacts): VerificationStatus {
-  const ok = fetched && (statusCode === null || (statusCode >= 200 && statusCode < 300));
-  if (!ok) return "unverified";
-  if (facts.injectionSignals.length) return "partially_verified";
+/**
+ * verified            OFFICIAL source (see source.ts) and the deadline is quoted from it.
+ * partially_verified  official source, but no deadline found on it.
+ * unverified          third-party, not fetched, non-2xx, or instruction-like text on the page.
+ * A fetched page is evidence that the page exists, not that its claims are authoritative.
+ */
+export function verificationStatus(source: { cls: "official" | "third_party" | "unverified" }, facts: PageFacts): VerificationStatus {
+  if (source.cls !== "official" || facts.injectionSignals.length) return "unverified";
   return facts.deadline ? "verified" : "partially_verified";
 }

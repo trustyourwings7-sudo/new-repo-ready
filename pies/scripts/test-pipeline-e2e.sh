@@ -39,8 +39,8 @@ insert into public.user_preferences (user_id) values ('$USER_ID') on conflict (u
 insert into public.automation_integrations (id, user_id, name, enabled, allowed_agents)
 values ('$INT_ID', '$USER_ID', 'pies-research-runner', true, '{discovery}');
 -- Seed the owner's projects the way the app does on first sign-in.
-select set_config('request.jwt.claims', '{"sub":"$USER_ID","role":"authenticated"}', false);
-select public.initialize_projects();
+select set_config('request.jwt.claims', '{"sub":"$USER_ID","role":"authenticated"}', false) is not null as _ \gset
+select public.initialize_projects() is not null as _ \gset
 SQL
 
 node "$ROOT/scripts/mock-providers.mjs" "$MOCK_PORT" > "$WORK/mock.log" 2>&1 &
@@ -48,12 +48,12 @@ MOCK_PID=$!
 for _ in $(seq 1 40); do curl -s -o /dev/null "http://127.0.0.1:$MOCK_PORT/__count" && break; sleep 0.25; done
 count() { curl -s "http://127.0.0.1:$MOCK_PORT/__count"; }
 
-export PIES_PIPELINE_CONFIG_JSON='{"profile":{"name":"Test Owner","nationality":"Rwanda","age":24,"education":"secondary","experienceKeywords":["operations","sales"],"rejectApplicationFees":true,"proofPoints":["Fixture proof point"]},"queries":[{"project":"education-funding","category":"scholarship","query":"international scholarships for Rwandan students","numResults":10,"strategicFit":"primary"}],"caps":{"searches":2,"extractions":10}}'
+export PIES_PIPELINE_CONFIG_JSON='{"profile":{"name":"Test Owner","nationality":"Rwanda","age":24,"education":"secondary","experienceKeywords":["operations","sales"],"rejectApplicationFees":true,"proofPoints":["Fixture proof point"]},"queries":[{"project":"education-funding","category":"scholarship","query":"international scholarships for Rwandan students","numResults":10,"strategicFit":"primary"}],"caps":{"searches":2,"extractions":10},"officialDomains":["127.0.0.1"]}'
 export PIES_AUTOMATION_DATABASE_URL="postgres://pies_automation:pipe-only-password@127.0.0.1:$PGPORT_P/postgres"
 export PIES_AUTOMATION_INTEGRATION_ID="$INT_ID" PIES_OWNER_USER_ID="$USER_ID"
 export PIES_PROVIDER_BASE_URL_OVERRIDE="http://127.0.0.1:$MOCK_PORT"
 export EXA_API_KEY="test-exa-key" FIRECRAWL_API_KEY="test-fc-key" PIES_REPORT_PATH="$WORK/report.md"
-RUN() { node "$ROOT/scripts/run-pipeline.ts" > "$WORK/out" 2> "$WORK/err"; echo $?; }
+RUN() { node --no-warnings "$ROOT/scripts/run-pipeline.ts" > "$WORK/out" 2> "$WORK/err"; echo $?; }
 
 # 1. Safety gate: no live switch -> exit 3, nothing called.
 code=$(PIES_LIVE_RESEARCH= RUN || true)
@@ -67,7 +67,8 @@ export PIES_LIVE_RESEARCH=1 PIES_PRICES_CONFIRMED_ON="$(date -u +%F)"
 code=$(RUN || true)
 [ "$code" = "4" ] || fail "paid disabled: expected exit 4, got $code: $(cat "$WORK/err") $(cat "$WORK/out")"
 [ "$(count)" = '{"exa":0,"firecrawl":0}' ] || fail "paid disabled: providers were called: $(count)"
-echo "ok   paid_operations_enabled=false -> governor denies, zero provider calls"
+grep -q '"outcome":"blocked"' "$WORK/out" || fail "paid disabled: expected outcome blocked: $(cat "$WORK/out")"
+echo "ok   paid_operations_enabled=false -> governor denies, zero provider calls, outcome blocked"
 
 # 3. Paid on but providers not pricing-verified -> still denied.
 "${PSQL[@]}" -c "update public.user_preferences set paid_operations_enabled = true where user_id = '$USER_ID'"
@@ -82,11 +83,16 @@ echo "ok   provider pricing unverified -> denied, zero provider calls"
 code=$(RUN || true)
 [ "$code" = "0" ] || fail "full run: expected exit 0, got $code: $(cat "$WORK/err") $(cat "$WORK/out")"
 grep -q '"persisted":2' "$WORK/out" || fail "full run: expected 2 persisted: $(cat "$WORK/out")"
+grep -q '"outcome":"productive"' "$WORK/out" || fail "full run: expected outcome productive: $(cat "$WORK/out")"
+grep -q '"sourcesOfficial":2' "$WORK/out" || fail "full run: expected 2 official sources (allowlisted host; one saved, one rejected by the degree gate): $(cat "$WORK/out")"
+grep -q '"sourcesUnverified":1' "$WORK/out" || fail "full run: injected page must be unverified: $(cat "$WORK/out")"
 grep -q '"rejected":1' "$WORK/out" || fail "full run: expected 1 rejected (masters-only gate): $(cat "$WORK/out")"
 grep -q '"duplicates":1' "$WORK/out" || fail "full run: expected 1 duplicate: $(cat "$WORK/out")"
 q() { "${PSQL[@]}" -c "$1"; }
 [ "$(q "select count(*) from public.opportunities where user_id='$USER_ID'")" = "2" ] || fail "expected 2 opportunities"
 [ "$(q "select count(*) from public.opportunities where user_id='$USER_ID' and qualification_score is null and eligibility_status='unknown'")" = "2" ] || fail "automation must not set score or eligibility"
+[ "$(q "select string_agg(source_type, ',' order by source_type) from public.opportunity_sources where user_id='$USER_ID'")" = "official,search_result" ] || fail "source types must reflect official vs unverified"
+[ "$(q "select count(*) from public.activities where user_id='$USER_ID' and title like 'Review:%' and description like 'REVIEW ONLY.%'")" = "2" ] || fail "review tasks must be marked review-only"
 [ "$(q "select count(*) from public.opportunity_sources where user_id='$USER_ID' and evidence_excerpt like 'verification:%'")" = "2" ] || fail "expected 2 evidenced sources"
 [ "$(q "select count(*) from public.activities where user_id='$USER_ID' and kind='task' and title like 'Review:%'")" = "2" ] || fail "expected 2 review tasks"
 # Every run reports, including the denied ones in steps 2-3 (blocked runs must be visible).

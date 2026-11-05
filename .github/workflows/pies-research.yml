@@ -33,15 +33,15 @@ jobs:
       run:
         working-directory: pies
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22.23.x"
       - run: corepack enable && pnpm install --frozen-lockfile --prod=false
       - name: Research run (metrics only)
-        run: node --no-warnings scripts/run-pipeline.ts
+        run: node --no-warnings scripts/run-pipeline.ts && echo "(metrics above; details are in PIES, never in this public log)"
         env:
           PIES_PIPELINE_CONFIG_JSON: ${{ secrets.PIES_PIPELINE_CONFIG_JSON }}
           PIES_AUTOMATION_DATABASE_URL: ${{ secrets.PIES_AUTOMATION_DATABASE_URL }}

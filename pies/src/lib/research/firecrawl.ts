@@ -8,8 +8,9 @@ export interface ExtractedPage {
   title: string;
   markdown: string;
   statusCode: number | null;
-  /** Credits the provider reported, if any. */
+  /** Credits the provider reported, if any (data.metadata.creditsUsed or top-level creditsUsed). */
   reportedCredits: number | null;
+  contentType?: string | null;
 }
 
 export interface ExtractProvider {
@@ -19,6 +20,7 @@ export interface ExtractProvider {
 
 const scrapeResponse = z.object({
   success: z.boolean(),
+  creditsUsed: z.unknown().optional(),
   data: z
     .object({
       markdown: z.string().nullish(),
@@ -28,7 +30,8 @@ const scrapeResponse = z.object({
           sourceURL: z.string().nullish(),
           url: z.string().nullish(),
           statusCode: z.number().nullish(),
-          creditsUsed: z.number().nullish(),
+          creditsUsed: z.unknown().optional(),
+          contentType: z.string().nullish(),
         })
         .partial()
         .nullish(),
@@ -37,6 +40,17 @@ const scrapeResponse = z.object({
 });
 
 export const MAX_PAGE_CHARS = 60_000;
+
+/** PDFs cost +1 credit PER PAGE (unbounded): refused before any call. */
+export function looksLikePdf(url: string): boolean {
+  try {
+    return /\.pdf$/i.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+const credits = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
 
 export class FirecrawlExtract implements ExtractProvider {
   readonly name = "firecrawl";
@@ -51,12 +65,13 @@ export class FirecrawlExtract implements ExtractProvider {
   }
 
   async extract(url: string): Promise<ExtractedPage> {
-    if (!/^https?:\/\//i.test(url)) throw new ProviderError(this.name, "bad_request", null);
+    if (!/^https?:\/\//i.test(url) || looksLikePdf(url)) throw new ProviderError(this.name, "bad_request", null);
     const raw = await postJson(
       `${this.baseUrl}/v2/scrape`,
       { authorization: `Bearer ${this.apiKey}` },
-      { url, formats: ["markdown"], onlyMainContent: true, timeout: 30000 },
-      { ...this.http, provider: this.name, timeoutMs: 45_000 },
+      // parsers: [] disables PDF parsing (billed per page); no json/PII/lockdown add-ons.
+      { url, formats: ["markdown"], onlyMainContent: true, parsers: [], timeout: 30000 },
+      { ...this.http, provider: this.name, timeoutMs: 45_000, retryOn: ["rate_limited"] },
     );
     const parsed = scrapeResponse.safeParse(raw);
     if (!parsed.success || !parsed.data.success || !parsed.data.data) throw new ProviderError(this.name, "invalid_response", 200);
@@ -66,7 +81,8 @@ export class FirecrawlExtract implements ExtractProvider {
       title: (d.metadata?.title ?? "").trim().slice(0, 500),
       markdown: (d.markdown ?? "").slice(0, MAX_PAGE_CHARS),
       statusCode: d.metadata?.statusCode ?? null,
-      reportedCredits: d.metadata?.creditsUsed ?? null,
+      reportedCredits: credits(d.metadata?.creditsUsed) ?? credits(parsed.data.creditsUsed),
+      contentType: d.metadata?.contentType ?? null,
     };
   }
 }

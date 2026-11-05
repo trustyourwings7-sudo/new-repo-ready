@@ -27,24 +27,46 @@ Why this shape:
 | Cloudflare Workers Free + Cron | Rejected for now | **10 ms CPU per cron run**, 50 external subrequests, 5 cron triggers per account ([limits](https://developers.cloudflare.com/workers/platform/limits/)). Markdown parsing of 10 pages risks the CPU cap, and Postgres needs a socket shim. Revisit only if Actions becomes unreliable. The pipeline code is runtime-agnostic (`fetch` only), except the Postgres sink. |
 | n8n Cloud | Retired | Trial expired; renewal not authorized. Workflows/data in the n8n account are untouched. |
 
-## What it costs
+## What it costs, and what the internal cap does NOT guarantee
 
-| Provider | Verified facts (2026-11-05) | PIES reservation price | Confidence |
+**Two different things limit spend. Only one of them is in PIES.**
+
+| Layer | What it limits | Where it lives |
+|---|---|---|
+| PIES governor (internal) | Whether PIES *starts* another call. Reserves before each call, records the cost after. Caps: $10 total, $2 search category, optional per-provider caps | Supabase (`reserve_budget`, `commit_usage`) |
+| Provider account (external) | What the provider can actually *bill* | Exa and Firecrawl dashboards; your payment method |
+
+The internal cap **cannot** stop a provider from billing. A single call can cost more than reserved
+(`commit_usage` records it with `overrun = true`), and a request PIES abandoned may still have been
+processed. The only hard money limit is on the provider side: Firecrawl's free plan stops with HTTP 402
+at its allowance; Exa bills a card on file once free credits are used. **Keep both accounts on free plans
+with no card and no auto top-up** while the internal cap is the plan of record.
+
+### Billing semantics used for accounting (official docs, 2026-11-05)
+
+| Event | Exa `/search` (type auto) | Firecrawl `/v2/scrape` | PIES records |
 |---|---|---|---|
-| Exa `/search` (type auto, ≤10 results with text) | $7 per 1,000 is the highest published figure; free plan $10 credits/month | $0.007 × 1.25 | Likely (official pricing page not reachable from the build container) |
-| Firecrawl `/v2/scrape` | 1 credit/page; **free plan has no pay-as-you-go: HTTP 402 at the limit**; 1,000 credits/month; 10 scrapes/min ([billing](https://docs.firecrawl.dev/billing), [rate limits](https://docs.firecrawl.dev/rate-limits)) | shadow $0.0097/credit × 1.25 | Likely |
-| GitHub Actions | Standard runners in public repositories are free | $0 | Likely |
-| Supabase | Free plan (owner's project) | $0 | Needs owner confirmation |
+| Success | $7/1k requests **+ $1/1k content pages** (text for N results = N pages) ([pricing](https://exa.ai/docs/admin/pricing)) | 1 credit per returned document; cached still 1; proxy escalation 0 extra ([billing](https://docs.firecrawl.dev/billing)) | provider's reported figure if present and sane (`costDollars`, `creditsUsed`); else list price for what came back |
+| PDF | n/a | **+1 credit per PDF page** (unbounded) | refused before the call (URL check) and `parsers: []` sent |
+| No document returned | n/a | 0 credits | $0 |
+| 400/401/402/403/429 | treated as not billed | treated as not billed | reservation released |
+| Timeout, 5xx, unparseable 200 | **undocumented** | **undocumented** | **charged at list price** (assume billed) |
+| Retry | each attempt billed | each attempt billed | paid calls retry **only 429**; never after a timeout/5xx |
+| Reported cost > 3× reservation | — | — | committed as reported, then the run **stops** (`UnexpectedCost`) |
 
-Default run (3 searches + 10 extractions): reserve $0.1475, commit $0.118 at list prices
-(3 × $0.007 + 10 × $0.0097). The **search** category cap ($2/month) stops it after roughly 13–17 runs a month; per-provider caps
-(`provider_configs.monthly_cap_usd`) split that further. **Worst case is bounded by the governor at $2.00
-search + $0 AI + $0 infra**, and real money only moves if the Exa account has a card and exceeds its free credits.
+Reservations: Exa = (0.007 + 10 × 0.001) × 1.25 = **$0.02125** per search; Firecrawl = 2 credits × $0.0097
+shadow price × 1.25 = **$0.02425** per scrape. A default run (3 searches, 10 scrapes) reserves up to $0.31 and
+records about $0.15 at list prices (3 × $0.017 + 10 × $0.0097). The $2 search allocation therefore covers
+roughly 13 such runs a month before PIES stops itself. The $10 total and $2 search ceilings are unchanged
+(`pies_hard_monthly_cap_usd()`, `budgets`, verified by the SQL tests).
+
+**Confidence:** prices [Likely] (official pages read through search; the build container cannot open them).
+Billing of failed requests [Guessing] — hence the conservative "assume billed" rule.
 
 ## Owner setup (each step is yours; nothing here was done for you)
 1. **Supabase**: create the Free project, apply `supabase/migrations/*` in order, run `supabase/verify/production_checks.sql` (all rows `ok = true`), sign in once (seeds projects), then follow DEPLOYMENT.md to give `pies_automation` a login password and create one `automation_integrations` row with `allowed_agents = '{discovery}'`.
 2. **Providers**: in Supabase, insert `provider_configs` rows for `exa` and `firecrawl` (category `search`, `enabled`, `pricing_verified` with the pricing URL you checked, `monthly_cap_usd` e.g. 1.50 / 0.50), then set `user_preferences.paid_operations_enabled = true`.
-3. **Accounts**: confirm Exa and Firecrawl are on free plans with **no card and no auto top-up**.
+3. **Accounts**: confirm Exa and Firecrawl are on free plans with **no card and no auto top-up**. This, not the PIES governor, is the hard money limit.
 4. **GitHub**: Settings → Environments → create `pies-production` (add yourself as required reviewer to approve every run). Add secrets: `PIES_PIPELINE_CONFIG_JSON` (profile + queries; see `config.example.json`; it contains personal data and must never be committed), `PIES_AUTOMATION_DATABASE_URL`, `PIES_AUTOMATION_INTEGRATION_ID`, `PIES_OWNER_USER_ID`, `EXA_API_KEY`, `FIRECRAWL_API_KEY`, `PIES_PRICES_CONFIRMED_ON` (date you checked the pricing pages), `PIES_LIVE_RESEARCH=1`.
 5. Run **PIES research run** by hand once; read the report task in PIES. Only then consider uncommenting `schedule`.
 

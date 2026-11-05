@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "mcp__Composio",
+      "mcp__Gmail__send_message",
+      "mcp__Gmail__reply",
+      "mcp__Gmail__forward",
+      "mcp__Gmail__trash_message",
+      "mcp__Gmail__trash_thread",
+      "mcp__Gmail__delete_draft",
+      "mcp__n8n__publish_workflow",
+      "mcp__n8n__publish_agent",
+      "mcp__n8n__create_agent",
+      "mcp__n8n__call_agent",
+      "mcp__n8n__execute_workflow",
+      "mcp__n8n__install_community_node",
+      "mcp__github__merge_pull_request",
+      "mcp__github__enable_pr_auto_merge",
+      "mcp__github__delete_file",
+      "mcp__playwright__browser_run_code_unsafe",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_file_upload",
+      "Read(./**/.env)",
+      "Read(./**/.env.local)",
+      "Read(./**/.env.*.local)",
+      "Read(./**/.env.production)",
+      "Read(~/.claude/.credentials.json)",
+      "mcp__tavily__tavily_crawl",
+      "mcp__tavily__tavily_research",
+      "mcp__firecrawl__firecrawl_crawl",
+      "mcp__firecrawl__firecrawl_agent",
+      "mcp__firecrawl__firecrawl_interact",
+      "mcp__firecrawl__firecrawl_monitor_create",
+      "mcp__firecrawl__firecrawl_monitor_update",
+      "mcp__firecrawl__firecrawl_monitor_run"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "context7",
+    "playwright",
+    "exa",
+    "tavily",
+    "firecrawl",
+    "supabase"
+  ],
+  "enabledPlugins": {
+    "claude-for-financial-advisors@synced": false,
+    "productivity@synced": false,
+    "brand-voice@synced": false,
+    "data@synced": false,
+    "enterprise-search@synced": false,
+    "video-cleanup@synced": false,
+    "cowork-plugin-management@synced": false,
+    "operations@synced": false
+  }
+}

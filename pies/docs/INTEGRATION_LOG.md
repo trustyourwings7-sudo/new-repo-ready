@@ -64,3 +64,15 @@ Rows 27–48 are in `docs/MCP_RETEST_2026-11-05.md`. Rows below continue from th
 | 63 | Budget (budget-guard) | see final report table | |
 | 64 | Skills | ✅ all 10 discovered after touching `pies/` | session notice |
 | 65 | Tests | ✅ 155/155 unit tests | `pnpm test` |
+
+## Session 2026-11-06: real Supabase (project `pies`, eu-west-2, Postgres 17.11, Free plan)
+
+| # | Step | Result | Evidence / fix |
+|---|---|---|---|
+| 66 | Free-plan slot | ✅ owner deleted unused projects in other orgs; `pies` org is Free | `get_organization` → plan free |
+| 67 | Supabase connector guardrail | ✅ ask on SQL/migrations/project changes; deny branches, edge functions | commit 9932eb9; 8 tools removed live |
+| 68 | T1 apply migrations 1–5 via connector (owner approved each) | ✅ all succeeded; `create role pies_automation` works on Supabase | `apply_migration` |
+| 69 | T2/T3 `production_checks.sql` | ✅ checks 1–15 `ok = true`; 16 = login not yet enabled (expected) | `execute_sql` |
+| 70 | Copy fidelity | ✅ functions (35), columns, constraints (188), policies, triggers fingerprints **identical** to a local build from the files | md5 fingerprint query, both sides |
+| 71 | Supabase security advisor | ⚠️ 1 WARN (lint 0029): the 5 intended SECURITY DEFINER functions callable by `authenticated`; each has an owner check. Intended, no change | `get_advisors` |
+| 72 | Remaining Phase A | 🔒 owner: auth lockdown, owner user, DB password reset, `pies_automation` login, T4 restricted-login proof | LAUNCH_PLAN.md A2, A5, A7 |

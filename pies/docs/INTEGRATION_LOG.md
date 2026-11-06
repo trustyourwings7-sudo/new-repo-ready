@@ -82,3 +82,4 @@ Rows 27–48 are in `docs/MCP_RETEST_2026-11-05.md`. Rows below continue from th
 | 76 | `pies_automation` login (A7) | ✅ owner ran a server-side generator (password never typed, never seen by Claude; tested locally first) | `rolcanlogin = true` |
 | 77 | T4 privilege proof (catalog) | ✅ no dangerous attributes, no table grants, only the 4 functions, cannot select opportunities, delete audit_logs or run budget_summary | `has_*_privilege` via `execute_sql` |
 | 78 | T4 live pooler login | ⏳ deferred: proven automatically by the first runner connection in Phase C (`session_user` must be `pies_automation`) | — |
+| 79 | Exa account (B1) | ✅ Free tier, **no payment method** ("add a payment method to enable credit purchases and automatic top-ups"), $19.99 free balance, no invoices. Dashboard prices: Lite $4/1k, content $1/1k pages, +$1/1k results beyond 10 (match pricing.ts; Auto $7/1k not shown, runner commits Exa's reported cost) | owner screenshots, 2026-11-06 |

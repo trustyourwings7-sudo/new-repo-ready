@@ -13,6 +13,10 @@
     { "project": "career", "category": "employment", "query": "remote entry-level operations or sales roles hiring internationally", "numResults": 10, "strategicFit": "secondary" },
     { "project": "lead-generation", "category": "commercial", "query": "private schools in Kigali seeking website or CRM improvements", "numResults": 10, "strategicFit": "secondary" }
   ],
+  "ownerUserId": "00000000-0000-0000-0000-000000000000",
+  "integrationId": "00000000-0000-0000-0000-000000000000",
+  "pricesConfirmedOn": "2026-11-06",
+  "officialDomains": [],
   "caps": { "searches": 3, "extractions": 10 },
   "excludeHosts": []
 }

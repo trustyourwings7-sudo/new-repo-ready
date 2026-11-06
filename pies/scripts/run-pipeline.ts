@@ -43,6 +43,11 @@ const configSchema = z.object({
     )
     .min(1)
     .max(10),
+  // Non-secret identifiers and the owner's price-check date may live in the config secret,
+  // so the owner manages fewer GitHub secrets. Environment variables, when set, win.
+  ownerUserId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).optional(),
+  integrationId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).optional(),
+  pricesConfirmedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   caps: z.object({ searches: z.number().int().min(1).max(10), extractions: z.number().int().min(0).max(15) }).default({ searches: 3, extractions: 10 }),
   excludeHosts: z.array(z.string()).max(50).default([]),
   officialDomains: z.array(z.string().regex(/^[a-z0-9.-]{3,253}$/)).max(200).default([]),
@@ -61,8 +66,12 @@ const parsed = configSchema.safeParse(JSON.parse(rawConfig));
 if (!parsed.success) fail(2, `config invalid: ${parsed.error.issues.map((i) => i.path.join(".")).join(", ")}`);
 const cfg = parsed.data;
 
-const problems = liveModeProblems(env);
-for (const k of ["PIES_AUTOMATION_DATABASE_URL", "PIES_AUTOMATION_INTEGRATION_ID", "PIES_OWNER_USER_ID"]) if (!env[k]) problems.push(`${k} is missing`);
+const ownerUserId = env.PIES_OWNER_USER_ID || cfg.ownerUserId || "";
+const integrationId = env.PIES_AUTOMATION_INTEGRATION_ID || cfg.integrationId || "";
+const problems = liveModeProblems({ ...env, PIES_PRICES_CONFIRMED_ON: env.PIES_PRICES_CONFIRMED_ON || cfg.pricesConfirmedOn });
+if (!env.PIES_AUTOMATION_DATABASE_URL) problems.push("PIES_AUTOMATION_DATABASE_URL is missing");
+if (!integrationId) problems.push("integration id is missing (PIES_AUTOMATION_INTEGRATION_ID or config.integrationId)");
+if (!ownerUserId) problems.push("owner user id is missing (PIES_OWNER_USER_ID or config.ownerUserId)");
 if (env.PIES_AUTOMATION_DATABASE_URL && !/^postgres(ql)?:\/\/pies_automation[.:@]/.test(env.PIES_AUTOMATION_DATABASE_URL)) {
   problems.push("PIES_AUTOMATION_DATABASE_URL must connect as the pies_automation role");
 }
@@ -77,14 +86,14 @@ const sql = postgres(env.PIES_AUTOMATION_DATABASE_URL!, {
   connect_timeout: 10,
   connection: { application_name: "pies-research-runner", statement_timeout: 15000 },
 });
-const sink = dbSink(sql as never, env.PIES_AUTOMATION_INTEGRATION_ID!);
+const sink = dbSink(sql as never, integrationId);
 const http = { maxRetries: 1, timeoutMs: 30_000 };
 const exa = new ExaSearch(env.EXA_API_KEY!, http, override ? `${override}/exa` : undefined);
 const firecrawl = new FirecrawlExtract(env.FIRECRAWL_API_KEY!, http, override ? `${override}/firecrawl` : undefined);
 const fast = Boolean(override);
 const meter = new MeteredResearch(exa, firecrawl, {
   rpc: sink.rpc,
-  userId: env.PIES_OWNER_USER_ID!,
+  userId: ownerUserId,
   runKey: `${today}:pies-research`,
   caps: cfg.caps,
   ...(fast ? { pacingMs: { exa: 0, firecrawl: 0 } } : {}),

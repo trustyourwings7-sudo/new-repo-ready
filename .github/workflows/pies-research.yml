@@ -3,17 +3,25 @@ name: PIES research run
 #
 # ACTIVATION REQUIRES THE OWNER. Today this only runs when started by hand, and even then
 # the runner refuses to call any provider unless ALL of these hold:
-#   - repository secret PIES_LIVE_RESEARCH = 1
-#   - repository secret PIES_PRICES_CONFIRMED_ON = a date within the last 31 days
+#   - the "live" choice below is set to "yes" when the run is started (default "no")
+#   - the config secret carries pricesConfirmedOn within the last 31 days
 #   - EXA_API_KEY and FIRECRAWL_API_KEY secrets exist
-#   - in the database: user_preferences.paid_operations_enabled, and each provider row in
-#     provider_configs is enabled AND pricing_verified (source URL + date), with monthly caps
+#   - in the database: user_preferences.paid_operations_enabled (the real lock), and each
+#     provider row in provider_configs is enabled AND pricing_verified, with monthly caps
+# Secrets (4): PIES_PIPELINE_CONFIG_JSON (profile, queries, ownerUserId, integrationId,
+#   pricesConfirmedOn), PIES_AUTOMATION_DATABASE_URL, EXA_API_KEY, FIRECRAWL_API_KEY.
 # To schedule it, uncomment `schedule` below (owner decision; see pies/docs/RUNNER.md).
 #
 # PUBLIC REPOSITORY: run logs are public. The runner prints aggregate metrics only;
 # never add steps that print the report, upload it as an artifact, or echo secrets.
 on:
   workflow_dispatch:
+    inputs:
+      live:
+        description: "Call Exa and Firecrawl for real? (the database switch must also be on)"
+        type: choice
+        options: ["no", "yes"]
+        default: "no"
   # schedule:
   #   - cron: "17 5 * * *"   # 05:17 UTC = 07:17 Kigali; off the hour to avoid queue delays
 
@@ -45,9 +53,6 @@ jobs:
         env:
           PIES_PIPELINE_CONFIG_JSON: ${{ secrets.PIES_PIPELINE_CONFIG_JSON }}
           PIES_AUTOMATION_DATABASE_URL: ${{ secrets.PIES_AUTOMATION_DATABASE_URL }}
-          PIES_AUTOMATION_INTEGRATION_ID: ${{ secrets.PIES_AUTOMATION_INTEGRATION_ID }}
-          PIES_OWNER_USER_ID: ${{ secrets.PIES_OWNER_USER_ID }}
-          PIES_LIVE_RESEARCH: ${{ secrets.PIES_LIVE_RESEARCH }}
-          PIES_PRICES_CONFIRMED_ON: ${{ secrets.PIES_PRICES_CONFIRMED_ON }}
+          PIES_LIVE_RESEARCH: ${{ github.event.inputs.live == 'yes' && '1' || '' }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}

@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       live:
-        description: "Call Exa and Firecrawl for real? (the database switch must also be on)"
+        description: "no = connection check only (no providers, nothing written). yes = real research (database switch must also be on)"
         type: choice
         options: ["no", "yes"]
         default: "no"
@@ -54,5 +54,7 @@ jobs:
           PIES_PIPELINE_CONFIG_JSON: ${{ secrets.PIES_PIPELINE_CONFIG_JSON }}
           PIES_AUTOMATION_DATABASE_URL: ${{ secrets.PIES_AUTOMATION_DATABASE_URL }}
           PIES_LIVE_RESEARCH: ${{ github.event.inputs.live == 'yes' && '1' || '' }}
+          # live = no runs a read-only connection check: restricted login, denied reads, governor reachable.
+          PIES_CONNECTION_CHECK: ${{ github.event.inputs.live != 'yes' && '1' || '' }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}

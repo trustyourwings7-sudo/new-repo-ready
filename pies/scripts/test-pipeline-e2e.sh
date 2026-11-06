@@ -61,6 +61,15 @@ code=$(PIES_LIVE_RESEARCH= RUN || true)
 [ "$(count)" = '{"exa":0,"firecrawl":0}' ] || fail "gate: providers were called: $(count)"
 echo "ok   live switch off -> exit 3, zero provider calls"
 
+# 1b. Connection check (live off): restricted login proven, nothing called or written.
+usage_before=$("${PSQL[@]}" -c "select count(*) from public.usage_records")
+code=$(PIES_LIVE_RESEARCH= PIES_CONNECTION_CHECK=1 RUN || true)
+[ "$code" = "0" ] || fail "connection check: expected exit 0, got $code: $(cat "$WORK/out") $(cat "$WORK/err")"
+grep -q '"sessionUser":"pies_automation","tableRead":"denied","budgetSummary":"denied","governor":"paid_operations_disabled"' "$WORK/out" || fail "connection check output: $(cat "$WORK/out")"
+[ "$(count)" = '{"exa":0,"firecrawl":0}' ] || fail "connection check called providers: $(count)"
+[ "$("${PSQL[@]}" -c "select count(*) from public.usage_records")" = "$usage_before" ] || fail "connection check wrote usage"
+echo "ok   connection check -> pies_automation, table read denied, budget_summary denied, governor reachable, nothing written"
+
 export PIES_LIVE_RESEARCH=1 PIES_PRICES_CONFIRMED_ON="$(date -u +%F)"
 
 # 2. Database switch off (paid_operations_enabled=false) -> governor denies, providers untouched.

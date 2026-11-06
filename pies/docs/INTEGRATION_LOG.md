@@ -75,4 +75,8 @@ Rows 27–48 are in `docs/MCP_RETEST_2026-11-05.md`. Rows below continue from th
 | 69 | T2/T3 `production_checks.sql` | ✅ checks 1–15 `ok = true`; 16 = login not yet enabled (expected) | `execute_sql` |
 | 70 | Copy fidelity | ✅ functions (35), columns, constraints (188), policies, triggers fingerprints **identical** to a local build from the files | md5 fingerprint query, both sides |
 | 71 | Supabase security advisor | ⚠️ 1 WARN (lint 0029): the 5 intended SECURITY DEFINER functions callable by `authenticated`; each has an owner check. Intended, no change | `get_advisors` |
-| 72 | Remaining Phase A | 🔒 owner: auth lockdown, owner user, DB password reset, `pies_automation` login, T4 restricted-login proof | LAUNCH_PLAN.md A2, A5, A7 |
+| 72 | Owner auth setup (A2) | ✅ owner did sign-ups off, owner user, URL config, DB password reset; 1 user, email confirmed | `execute_sql` read of `auth.users` |
+| 73 | Owner records (A5, without the web app) | ✅ `initialize_profile` (7 entries) + `initialize_projects` (6) as the owner via transaction-local JWT claims | `execute_sql` |
+| 74 | Runner integration (A7) | ✅ `pies-research-runner`, enabled, `{discovery}`, 30/min, 1000/day, 2 concurrent | id `2b7967ff-…` |
+| 75 | Safety state | ✅ `paid_operations_enabled = false`, $10 cap, 0 provider rows, `pies_automation` login **off** | `execute_sql` |
+| 76 | Remaining Phase A | 🔒 owner: set `pies_automation` login password; T4 restricted-login proof (psql) | LAUNCH_PLAN.md A7 |

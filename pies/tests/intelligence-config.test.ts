@@ -142,6 +142,21 @@ describe("Claude Code permission guardrails", () => {
     expect(settings.permissions.ask).toContain(rule);
   });
 
+  // Full-access Supabase connector (claude.ai): every write prompts, paid/unused features are denied.
+  it.each([
+    "mcp__Supabase__execute_sql", "mcp__Supabase__apply_migration", "mcp__Supabase__create_project",
+    "mcp__Supabase__pause_project", "mcp__Supabase__restore_project", "mcp__Supabase__submit_feedback",
+  ])("asks before Supabase connector write %s", (rule) => {
+    expect(settings.permissions.ask).toContain(rule);
+  });
+  it.each([
+    "mcp__Supabase__create_branch", "mcp__Supabase__delete_branch", "mcp__Supabase__merge_branch",
+    "mcp__Supabase__rebase_branch", "mcp__Supabase__reset_branch",
+    "mcp__Supabase__deploy_edge_function", "mcp__Supabase__create_edge_function_secret", "mcp__Supabase__delete_feedback",
+  ])("denies Supabase connector %s (paid branching or unused by PIES)", (rule) => {
+    expect(deny).toContain(rule);
+  });
+
   it("never puts a rule in both deny and ask", () => {
     const ask: string[] = settings.permissions.ask;
     expect(ask.filter((r) => deny.includes(r))).toEqual([]);

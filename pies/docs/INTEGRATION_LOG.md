@@ -79,4 +79,6 @@ Rows 27–48 are in `docs/MCP_RETEST_2026-11-05.md`. Rows below continue from th
 | 73 | Owner records (A5, without the web app) | ✅ `initialize_profile` (7 entries) + `initialize_projects` (6) as the owner via transaction-local JWT claims | `execute_sql` |
 | 74 | Runner integration (A7) | ✅ `pies-research-runner`, enabled, `{discovery}`, 30/min, 1000/day, 2 concurrent | id `2b7967ff-…` |
 | 75 | Safety state | ✅ `paid_operations_enabled = false`, $10 cap, 0 provider rows, `pies_automation` login **off** | `execute_sql` |
-| 76 | Remaining Phase A | 🔒 owner: set `pies_automation` login password; T4 restricted-login proof (psql) | LAUNCH_PLAN.md A7 |
+| 76 | `pies_automation` login (A7) | ✅ owner ran a server-side generator (password never typed, never seen by Claude; tested locally first) | `rolcanlogin = true` |
+| 77 | T4 privilege proof (catalog) | ✅ no dangerous attributes, no table grants, only the 4 functions, cannot select opportunities, delete audit_logs or run budget_summary | `has_*_privilege` via `execute_sql` |
+| 78 | T4 live pooler login | ⏳ deferred: proven automatically by the first runner connection in Phase C (`session_user` must be `pies_automation`) | — |

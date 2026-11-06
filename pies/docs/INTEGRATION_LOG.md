@@ -64,3 +64,22 @@ Rows 27–48 are in `docs/MCP_RETEST_2026-11-05.md`. Rows below continue from th
 | 63 | Budget (budget-guard) | see final report table | |
 | 64 | Skills | ✅ all 10 discovered after touching `pies/` | session notice |
 | 65 | Tests | ✅ 155/155 unit tests | `pnpm test` |
+
+## Session 2026-11-06: real Supabase (project `pies`, eu-west-2, Postgres 17.11, Free plan)
+
+| # | Step | Result | Evidence / fix |
+|---|---|---|---|
+| 66 | Free-plan slot | ✅ owner deleted unused projects in other orgs; `pies` org is Free | `get_organization` → plan free |
+| 67 | Supabase connector guardrail | ✅ ask on SQL/migrations/project changes; deny branches, edge functions | commit 9932eb9; 8 tools removed live |
+| 68 | T1 apply migrations 1–5 via connector (owner approved each) | ✅ all succeeded; `create role pies_automation` works on Supabase | `apply_migration` |
+| 69 | T2/T3 `production_checks.sql` | ✅ checks 1–15 `ok = true`; 16 = login not yet enabled (expected) | `execute_sql` |
+| 70 | Copy fidelity | ✅ functions (35), columns, constraints (188), policies, triggers fingerprints **identical** to a local build from the files | md5 fingerprint query, both sides |
+| 71 | Supabase security advisor | ⚠️ 1 WARN (lint 0029): the 5 intended SECURITY DEFINER functions callable by `authenticated`; each has an owner check. Intended, no change | `get_advisors` |
+| 72 | Owner auth setup (A2) | ✅ owner did sign-ups off, owner user, URL config, DB password reset; 1 user, email confirmed | `execute_sql` read of `auth.users` |
+| 73 | Owner records (A5, without the web app) | ✅ `initialize_profile` (7 entries) + `initialize_projects` (6) as the owner via transaction-local JWT claims | `execute_sql` |
+| 74 | Runner integration (A7) | ✅ `pies-research-runner`, enabled, `{discovery}`, 30/min, 1000/day, 2 concurrent | id `2b7967ff-…` |
+| 75 | Safety state | ✅ `paid_operations_enabled = false`, $10 cap, 0 provider rows, `pies_automation` login **off** | `execute_sql` |
+| 76 | `pies_automation` login (A7) | ✅ owner ran a server-side generator (password never typed, never seen by Claude; tested locally first) | `rolcanlogin = true` |
+| 77 | T4 privilege proof (catalog) | ✅ no dangerous attributes, no table grants, only the 4 functions, cannot select opportunities, delete audit_logs or run budget_summary | `has_*_privilege` via `execute_sql` |
+| 78 | T4 live pooler login | ⏳ deferred: proven automatically by the first runner connection in Phase C (`session_user` must be `pies_automation`) | — |
+| 79 | Exa account (B1) | ✅ Free tier, **no payment method** ("add a payment method to enable credit purchases and automatic top-ups"), $19.99 free balance, no invoices. Dashboard prices: Lite $4/1k, content $1/1k pages, +$1/1k results beyond 10 (match pricing.ts; Auto $7/1k not shown, runner commits Exa's reported cost) | owner screenshots, 2026-11-06 |

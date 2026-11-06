@@ -110,6 +110,17 @@ code=$(RUN || true)
 [ "$(count)" = "$before" ] || fail "re-run called providers again: $before -> $(count)"
 echo "ok   same-day re-run -> zero new provider calls (idempotent)"
 
+# 5b. IDs and price date supplied only via the config secret (fewer GitHub secrets).
+CFG_IDS=$(printf '%s' "$PIES_PIPELINE_CONFIG_JSON" | sed "s|}\$|,\"ownerUserId\":\"$USER_ID\",\"integrationId\":\"$INT_ID\",\"pricesConfirmedOn\":\"$(date -u +%F)\"}|")
+code=$(env -u PIES_OWNER_USER_ID -u PIES_AUTOMATION_INTEGRATION_ID -u PIES_PRICES_CONFIRMED_ON PIES_PIPELINE_CONFIG_JSON="$CFG_IDS" bash -c 'node --no-warnings "'"$ROOT"'/scripts/run-pipeline.ts" > "'"$WORK"'/out" 2> "'"$WORK"'/err"; echo $?' || true)
+# Same day, so the budget keys are duplicates: the run must reach the database (not exit 3 at the
+# local gate) and stop at the governor with no new spend.
+runs_before_cfg=$(q "select count(*) from public.agent_runs where user_id='$USER_ID'")
+[ "$code" = "4" ] || fail "ids-in-config run: expected exit 4 (same-day duplicate), got $code: $(cat "$WORK/err")"
+grep -q '"stoppedEarly":"budget"' "$WORK/out" || fail "ids-in-config run: expected governor duplicate stop: $(cat "$WORK/out")"
+[ "$(count)" = "$before" ] || fail "ids-in-config run called providers again"
+echo "ok   ids + price date from config only -> passes the gate, reaches the DB, no repeat spend"
+
 # 6. Secrets never reach output.
 if grep -qE 'test-exa-key|test-fc-key|pipe-only-password' "$WORK/out" "$WORK/err"; then fail "secret appeared in runner output"; fi
 echo "ok   no secret in runner output"

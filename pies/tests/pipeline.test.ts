@@ -282,3 +282,43 @@ describe("first live run regressions (2026-11-07)", () => {
     expect(r.outcome).toBe("low_yield");
   });
 });
+
+describe("second live run regressions (2026-11-07)", () => {
+  it("recognises official universities on ordinary domains, but not look-alike aggregators", async () => {
+    const { classifySource } = await import("../src/lib/pipeline/source.ts");
+    const ok = { fetched: true, statusCode: 200, injection: false };
+    const cls = (u: string) => classifySource(u, ok).cls;
+    for (const u of ["https://maastrichtuniversity.nl/x", "https://future.utoronto.ca/p", "https://universiteitleiden.nl/x", "https://www.uni-hamburg.de/x", "https://hochschule-bremen.de/x"]) expect(cls(u), u).toBe("official");
+    for (const u of ["https://scholarships-for-university.com/x", "https://universityscholarshipsnow.com/x", "https://uniqueopportunities.com/x", "https://mastere.tn/x"]) expect(cls(u), u).toBe("third_party");
+  });
+
+  it("skips 'page not found' pages, even when served with HTTP 200 on an official domain", async () => {
+    const { isErrorPage } = await import("../src/lib/pipeline/source.ts");
+    expect(isErrorPage("Stránka nenalezena", "")).toBe(true);
+    expect(isErrorPage("Page not found | Ministry", "")).toBe(true);
+    expect(isErrorPage("Scholarships", "404 - the page you requested does not exist")).toBe(true);
+    expect(isErrorPage("Global Undergraduate Scholarship 2027/28", "Deadline 1 March 2027.")).toBe(false);
+  });
+
+  it("does not treat an official programme page with many dates as a list page", async () => {
+    const { isListingPage } = await import("../src/lib/pipeline/source.ts");
+    const many = "Deadline 1. Closes 2. Deadline 3. Closes 4. Deadline 5. Apply by 6.";
+    expect(isListingPage("Lester B Pearson International Student Scholarships", many, "official")).toBe(false);
+    expect(isListingPage("Lester B Pearson International Student Scholarships", many, "third_party")).toBe(true);
+    expect(isListingPage("Scholarships for Rwandans 2027: 451 open", "", "official")).toBe(true);
+  });
+
+  it("shares the extraction cap across queries (round-robin), so later queries are read too", async () => {
+    const hitsFor = (p: string) => [1, 2, 3].map((i) => ({ url: `https://${p}${i}.ac.rw/x`, title: `${p} ${i}`, publishedAt: null, snippet: "" }));
+    const search = { name: "exa", search: vi.fn(async (q: string) => ({ hits: hitsFor(q), reportedUsd: 0.007 })) };
+    const extract = { name: "firecrawl", extract: vi.fn(async (url: string) => ({ url, title: "", markdown: "A programme. Deadline 30 December 2026.", statusCode: 200, reportedCredits: 1 })) };
+    const sink = memorySink({ budgetUsd: 2, paidEnabled: true });
+    const meter = new MeteredResearch(search, extract, { rpc: sink.rpc, userId: "u", runKey: "2026-11-07:rr", caps: { searches: 3, extractions: 3 }, pacingMs: { exa: 0, firecrawl: 0 } });
+    const spec = (q: string) => ({ project: "education-funding", category: "scholarship" as const, query: q, numResults: 3, strategicFit: "primary" as const });
+    await runPipeline(
+      { runKey: "2026-11-07:rr", today: "2026-11-07", trigger: "manual", profile, queries: [spec("eu"), spec("ca"), spec("grants")] },
+      { meter, sink, robots: { allowed: async () => true } as unknown as RobotsPolicy },
+    );
+    expect(extract.extract.mock.calls.map((c) => new URL(c[0]).hostname.split(".")[0])).toEqual(["eu1", "ca1", "grants1"]);
+  });
+});

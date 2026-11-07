@@ -69,3 +69,4 @@ Read this file first in every session. Update the **Lessons log** at the end of 
 - 2026-11-05 — On a public repo, GitHub Actions logs are public. Runners print aggregate metrics only; details go to the database.
 - 2026-11-05 — A fetched page proves the page exists, not that it is authoritative. Verification needs an official source (owner allowlist or institutional domain); aggregators and other publishers stay third-party leads.
 - 2026-11-05 — An internal budget cap limits what PIES starts, not what a provider bills. Retry only 429 on paid calls, charge timeouts/5xx as billed, and keep provider accounts card-free as the hard limit.
+- 2026-11-07 — Supabase's pooler (Supavisor) can keep using a rotated role password for a while; the first connection may succeed and pooled backend connections fail with 28P01. Wait a few minutes after rotation, and read supavisor_logs before guessing.

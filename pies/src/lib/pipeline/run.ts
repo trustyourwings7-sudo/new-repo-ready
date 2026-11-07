@@ -8,7 +8,7 @@ import { draftableContact, extractContacts, type PublicContact } from "./contact
 import { buildDraft, safeTitle } from "./outreach.ts";
 import { prioritize, qualify, type Qualification, type VerifiedProfile } from "./qualify.ts";
 import type { PipelineSink } from "./sink.ts";
-import { classifySource, isListingPage, KNOWN_AGGREGATORS, sourceTypeFor, type SourceAssessment } from "./source.ts";
+import { classifySource, isErrorPage, isListingPage, KNOWN_AGGREGATORS, sourceTypeFor, type SourceAssessment } from "./source.ts";
 import { extractFacts, verificationStatus, type PageFacts, type VerificationStatus } from "./verify.ts";
 
 /**
@@ -133,8 +133,10 @@ export async function runPipeline(
   };
 
   // 1. Discover
-  const queue: { url: string; title: string; snippet: string; spec: QuerySpec }[] = [];
-  for (const spec of config.queries) {
+  // One list per query, then interleaved (round-robin) so the extraction cap is shared fairly.
+  // Second live run: the first two queries used all 6 extractions; the grants query was never read.
+  const perQuery: { url: string; title: string; snippet: string; spec: QuerySpec }[][] = config.queries.map(() => []);
+  for (const [qi, spec] of config.queries.entries()) {
     if (stoppedEarly) break;
     try {
       const out = await meter.searchOnce(spec.query, spec.numResults, { excludeDomains: [...KNOWN_AGGREGATORS, ...(config.aggregators ?? []), ...(config.excludeHosts ?? [])] });
@@ -147,12 +149,15 @@ export async function runPipeline(
           continue;
         }
         seen.add(n);
-        queue.push({ url: n, title: h.title, snippet: h.snippet, spec });
+        perQuery[qi]!.push({ url: n, title: h.title, snippet: h.snippet, spec });
       }
     } catch (err) {
       if (!stop(err)) candidates.push({ url: "", title: spec.query, spec, status: "failed", reason: errText(err) });
     }
   }
+
+  const queue: { url: string; title: string; snippet: string; spec: QuerySpec }[] = [];
+  for (let i = 0; perQuery.some((l) => i < l.length); i++) for (const l of perQuery) if (l[i]) queue.push(l[i]!);
 
   // 2-7. Extract, verify, qualify, contacts, draft, persist
   for (const c of queue) {
@@ -184,7 +189,12 @@ export async function runPipeline(
     const title = safeTitle(page.title || c.title, facts.injectionSignals.length > 0);
     const row: CandidateResult = { url: c.url, title, spec: c.spec, status: "rejected", verification, source, facts, q, contacts };
     candidates.push(row);
-    if (isListingPage(title, text)) {
+    if (isErrorPage(page.title || c.title, text)) {
+      row.status = "skipped";
+      row.reason = "error page (not found / denied), not an opportunity";
+      continue;
+    }
+    if (isListingPage(title, text, source.cls)) {
       row.status = "skipped";
       row.lead = true;
       row.reason = "list page: a lead to follow, not an opportunity (its deadline belongs to one item)";

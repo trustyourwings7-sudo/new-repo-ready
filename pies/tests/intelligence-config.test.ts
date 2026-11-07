@@ -174,3 +174,19 @@ describe("Claude Code permission guardrails", () => {
     }
   });
 });
+
+describe("research workflow guards (.github/workflows/pies-research.yml)", () => {
+  const wf = readFileSync(path.join(REPO, ".github/workflows/pies-research.yml"), "utf8");
+  it("makes scheduled runs live (the database switch is the pause) and manual runs follow the choice", () => {
+    expect(wf).toContain("PIES_LIVE_RESEARCH: ${{ (github.event_name == 'schedule' || github.event.inputs.live == 'yes') && '1' || '' }}");
+    expect(wf).toContain("PIES_CONNECTION_CHECK: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.live != 'yes') && '1' || '' }}");
+  });
+  it("enforces the owner's limits: 3 searches and 4 pages per run", () => {
+    expect(wf).toMatch(/PIES_MAX_SEARCHES: "3"/);
+    expect(wf).toMatch(/PIES_MAX_EXTRACTIONS: "4"/);
+  });
+  it("never prints, uploads or echoes the report or secrets from a public repository", () => {
+    expect(wf).not.toMatch(/upload-artifact|PIES_REPORT_PATH|echo \$\{\{ secrets/);
+    expect(wf).toMatch(/permissions:\s*\n\s*contents: read/);
+  });
+});

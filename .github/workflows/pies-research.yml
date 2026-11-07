@@ -22,8 +22,12 @@ on:
         type: choice
         options: ["no", "yes"]
         default: "no"
-  # schedule:
-  #   - cron: "17 5 * * *"   # 05:17 UTC = 07:17 Kigali; off the hour to avoid queue delays
+  # TEMPORARY TEST SCHEDULE (owner-approved checks, 2026-11-07): hourly at :37 so a real scheduled
+  # run can be observed. The database switch (paid_operations_enabled) decides whether a run
+  # researches or reports "paused". Replaced by the daily 05:17 UTC (07:17 Kigali) schedule only
+  # after the owner's final approval.
+  schedule:
+    - cron: "37 * * * *"
 
 permissions:
   contents: read
@@ -53,8 +57,12 @@ jobs:
         env:
           PIES_PIPELINE_CONFIG_JSON: ${{ secrets.PIES_PIPELINE_CONFIG_JSON }}
           PIES_AUTOMATION_DATABASE_URL: ${{ secrets.PIES_AUTOMATION_DATABASE_URL }}
-          PIES_LIVE_RESEARCH: ${{ github.event.inputs.live == 'yes' && '1' || '' }}
-          # live = no runs a read-only connection check: restricted login, denied reads, governor reachable.
-          PIES_CONNECTION_CHECK: ${{ github.event.inputs.live != 'yes' && '1' || '' }}
+          # Scheduled runs are live (the database switch is the pause); manual runs follow the choice.
+          PIES_LIVE_RESEARCH: ${{ (github.event_name == 'schedule' || github.event.inputs.live == 'yes') && '1' || '' }}
+          # Manual "live = no" runs a read-only connection check.
+          PIES_CONNECTION_CHECK: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.live != 'yes') && '1' || '' }}
+          # Owner limits: at most 3 searches and 4 official-page extractions per run (lower of these and the secret).
+          PIES_MAX_SEARCHES: "3"
+          PIES_MAX_EXTRACTIONS: "4"
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}

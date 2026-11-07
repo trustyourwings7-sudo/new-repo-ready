@@ -126,6 +126,21 @@ if (env.PIES_CONNECTION_CHECK === "1" && env.PIES_LIVE_RESEARCH !== "1") {
 if (problems.length) fail(3, `blocked (no provider or database call made):\n- ${problems.join("\n- ")}`);
 
 const today = new Date().toISOString().slice(0, 10);
+const trigger: "schedule" | "manual" = env.GITHUB_EVENT_NAME === "schedule" ? "schedule" : "manual";
+// Budget idempotency is per day AND per trigger: at most one paid scheduled run and one paid manual
+// run per day; retries within a slot never re-spend. (A same-day manual test no longer blocks the
+// scheduled run.)
+const runKey = `${today}:${trigger}`;
+// Workflow-level hard limits (owner condition: 3 searches, 4 pages a day). The lower of these and
+// the config secret's caps applies, so the secret cannot raise them.
+const envCap = (v: string | undefined, max: number) => {
+  const n = v === undefined || v === "" ? NaN : Number(v);
+  return Number.isInteger(n) && n >= 0 ? Math.min(n, max) : max;
+};
+const caps = {
+  searches: envCap(env.PIES_MAX_SEARCHES, cfg.caps.searches),
+  extractions: envCap(env.PIES_MAX_EXTRACTIONS, cfg.caps.extractions),
+};
 const sql = postgres(env.PIES_AUTOMATION_DATABASE_URL!, {
   max: 1,
   prepare: false,
@@ -140,21 +155,24 @@ const fast = Boolean(override);
 const meter = new MeteredResearch(exa, firecrawl, {
   rpc: sink.rpc,
   userId: ownerUserId,
-  runKey: `${today}:pies-research`,
-  caps: cfg.caps,
+  runKey,
+  caps,
   ...(fast ? { pacingMs: { exa: 0, firecrawl: 0 } } : {}),
 });
 
 try {
   const report = await runPipeline(
-    { runKey: `${today}:pies-research`, today, trigger: env.GITHUB_EVENT_NAME === "schedule" ? "schedule" : "manual", profile: cfg.profile, queries: cfg.queries, excludeHosts: cfg.excludeHosts, officialDomains: cfg.officialDomains, aggregators: cfg.aggregators },
+    { runKey, today, trigger, profile: cfg.profile, queries: cfg.queries, excludeHosts: cfg.excludeHosts, officialDomains: cfg.officialDomains, aggregators: cfg.aggregators },
     { meter, sink, robots: new RobotsPolicy() },
   );
   if (env.PIES_REPORT_PATH) writeFileSync(env.PIES_REPORT_PATH, report.markdown);
-  console.log(JSON.stringify({ ok: true, outcome: report.outcome, metrics: report.metrics, stoppedEarly: report.stoppedEarly ? report.stoppedEarly.split(":")[0] : null }));
+  // Paused = the owner's database switch is off. That is a deliberate state, not a failure:
+  // exit 0 so a paused schedule does not raise a red run or a failure email every day.
+  const paused = report.outcome === "blocked" && (report.stoppedEarly ?? "").includes("paid_operations_disabled");
+  console.log(JSON.stringify({ ok: true, trigger, caps, outcome: paused ? "paused" : report.outcome, metrics: report.metrics, stoppedEarly: report.stoppedEarly ? report.stoppedEarly.split(":")[0] : null }));
   await sink.close();
   // blocked = nothing was extracted (budget, gate, auth, quota). empty/low_yield are reported, not failures.
-  process.exit(report.outcome === "blocked" ? 4 : 0);
+  process.exit(report.outcome === "blocked" && !paused ? 4 : 0);
 } catch (err) {
   console.error(JSON.stringify({ ok: false, error: err instanceof Error ? err.message.slice(0, 200) : "unknown" }));
   await sink.close().catch(() => {});

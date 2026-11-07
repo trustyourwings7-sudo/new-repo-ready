@@ -72,12 +72,14 @@ echo "ok   connection check -> pies_automation, table read denied, budget_summar
 
 export PIES_LIVE_RESEARCH=1 PIES_PRICES_CONFIRMED_ON="$(date -u +%F)"
 
-# 2. Database switch off (paid_operations_enabled=false) -> governor denies, providers untouched.
-code=$(RUN || true)
-[ "$code" = "4" ] || fail "paid disabled: expected exit 4, got $code: $(cat "$WORK/err") $(cat "$WORK/out")"
-[ "$(count)" = '{"exa":0,"firecrawl":0}' ] || fail "paid disabled: providers were called: $(count)"
-grep -q '"outcome":"blocked"' "$WORK/out" || fail "paid disabled: expected outcome blocked: $(cat "$WORK/out")"
-echo "ok   paid_operations_enabled=false -> governor denies, zero provider calls, outcome blocked"
+# 2. PAUSE: database switch off -> governor denies, providers untouched, reported as "paused" with
+#    exit 0 (a deliberate state must not turn every scheduled run red). Tested as a scheduled run.
+code=$(GITHUB_EVENT_NAME=schedule RUN || true)
+[ "$code" = "0" ] || fail "paused: expected exit 0, got $code: $(cat "$WORK/err") $(cat "$WORK/out")"
+[ "$(count)" = '{"exa":0,"firecrawl":0}' ] || fail "paused: providers were called: $(count)"
+grep -q '"outcome":"paused"' "$WORK/out" || fail "paused: expected outcome paused: $(cat "$WORK/out")"
+grep -q '"trigger":"schedule"' "$WORK/out" || fail "paused: expected trigger schedule: $(cat "$WORK/out")"
+echo "ok   pause (paid_operations_enabled=false) on a scheduled run -> outcome paused, exit 0, zero provider calls"
 
 # 3. Paid on but providers not pricing-verified -> still denied.
 "${PSQL[@]}" -c "update public.user_preferences set paid_operations_enabled = true where user_id = '$USER_ID'"
@@ -129,6 +131,19 @@ runs_before_cfg=$(q "select count(*) from public.agent_runs where user_id='$USER
 grep -q '"stoppedEarly":"budget"' "$WORK/out" || fail "ids-in-config run: expected governor duplicate stop: $(cat "$WORK/out")"
 [ "$(count)" = "$before" ] || fail "ids-in-config run called providers again"
 echo "ok   ids + price date from config only -> passes the gate, reaches the DB, no repeat spend"
+
+# 5c. Scheduled run: its own daily slot (a same-day manual run does not block it), and the
+#     workflow limits override the config secret (secret allows 10 pages; env allows 2).
+code=$(GITHUB_EVENT_NAME=schedule PIES_MAX_SEARCHES=3 PIES_MAX_EXTRACTIONS=2 RUN || true)
+[ "$code" = "0" ] || fail "scheduled run: expected exit 0, got $code: $(cat "$WORK/err") $(cat "$WORK/out")"
+grep -q '"trigger":"schedule","caps":{"searches":2,"extractions":2}' "$WORK/out" || fail "scheduled run: caps not applied: $(cat "$WORK/out")"
+grep -q '"extracted":2' "$WORK/out" || fail "scheduled run: expected 2 extractions (env cap): $(cat "$WORK/out")"
+sched_count=$(count)
+[ "$sched_count" != "$before" ] || fail "scheduled run did no research (blocked by the manual run's keys)"
+echo "ok   scheduled run -> own daily slot, does research, env caps (2 pages) override secret (10)"
+code=$(GITHUB_EVENT_NAME=schedule PIES_MAX_SEARCHES=3 PIES_MAX_EXTRACTIONS=2 RUN || true)
+[ "$(count)" = "$sched_count" ] || fail "second scheduled run the same day spent again"
+echo "ok   second scheduled run same day -> zero new provider calls"
 
 # 6. Secrets never reach output.
 if grep -qE 'test-exa-key|test-fc-key|pipe-only-password' "$WORK/out" "$WORK/err"; then fail "secret appeared in runner output"; fi

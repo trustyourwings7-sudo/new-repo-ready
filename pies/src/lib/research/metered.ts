@@ -96,14 +96,14 @@ export class MeteredResearch {
     this.fcPacer = new Pacer(ctx.pacingMs?.firecrawl ?? 6500, sleep, now);
   }
 
-  async searchOnce(query: string, numResults: number): Promise<SearchOutcome> {
+  async searchOnce(query: string, numResults: number, opts: { excludeDomains?: string[] } = {}): Promise<SearchOutcome> {
     if (this.stats.searches >= this.ctx.caps.searches) throw new RunCapReached("searches");
     this.stats.searches++;
     const n = Math.min(Math.max(Math.trunc(numResults), 1), 10);
     const list = exaSearchListUsd(n); // worst case: every result returns text
     await this.exaPacer.wait();
     return this.metered("search", this.search.name, `search:${h(`${n}:${query}`)}`, withSafety(list), list, async () => {
-      const out = await this.search.search(query, n);
+      const out = await this.search.search(query, n, opts);
       // Exa's own figure when present and sane; otherwise list price for what came back.
       const listForReturned = exaSearchListUsd(Math.min(out.hits.length + (out.dropped ?? 0), 10));
       return { result: out, actualUsd: out.reportedUsd ?? listForReturned };

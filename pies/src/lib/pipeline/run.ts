@@ -8,7 +8,7 @@ import { draftableContact, extractContacts, type PublicContact } from "./contact
 import { buildDraft, safeTitle } from "./outreach.ts";
 import { prioritize, qualify, type Qualification, type VerifiedProfile } from "./qualify.ts";
 import type { PipelineSink } from "./sink.ts";
-import { classifySource, sourceTypeFor, type SourceAssessment } from "./source.ts";
+import { classifySource, isListingPage, KNOWN_AGGREGATORS, sourceTypeFor, type SourceAssessment } from "./source.ts";
 import { extractFacts, verificationStatus, type PageFacts, type VerificationStatus } from "./verify.ts";
 
 /**
@@ -52,6 +52,8 @@ export interface CandidateResult {
   facts?: PageFacts;
   qualified?: boolean;
   usefulDraft?: boolean;
+  /** List/aggregator page: reported as a lead, never saved as an opportunity. */
+  lead?: boolean;
   q?: Qualification;
   contacts?: PublicContact[];
   draft?: ReturnType<typeof buildDraft>;
@@ -73,8 +75,10 @@ export interface PipelineReport {
     sourcesOfficial: number;
     sourcesThirdParty: number;
     sourcesUnverified: number;
-    /** Saved, not ineligible, score >= 50. */
+    /** Saved, not ineligible, score >= 50, OFFICIAL source. */
     qualified: number;
+    /** List pages found: leads to follow, not opportunities. */
+    leads: number;
     /** Draft with a recipient taken from an official, injection-free page, and a known deadline. */
     usefulDrafts: number;
     reservedUsd: number;
@@ -133,7 +137,7 @@ export async function runPipeline(
   for (const spec of config.queries) {
     if (stoppedEarly) break;
     try {
-      const out = await meter.searchOnce(spec.query, spec.numResults);
+      const out = await meter.searchOnce(spec.query, spec.numResults, { excludeDomains: [...KNOWN_AGGREGATORS, ...(config.aggregators ?? []), ...(config.excludeHosts ?? [])] });
       for (const h of out.hits) {
         hits++;
         const n = normalizeUrl(h.url);
@@ -180,6 +184,12 @@ export async function runPipeline(
     const title = safeTitle(page.title || c.title, facts.injectionSignals.length > 0);
     const row: CandidateResult = { url: c.url, title, spec: c.spec, status: "rejected", verification, source, facts, q, contacts };
     candidates.push(row);
+    if (isListingPage(title, text)) {
+      row.status = "skipped";
+      row.lead = true;
+      row.reason = "list page: a lead to follow, not an opportunity (its deadline belongs to one item)";
+      continue;
+    }
     if (q.eligibility === "ineligible") {
       row.reason = q.gateFailures.join("; ");
       continue;
@@ -212,7 +222,10 @@ export async function runPipeline(
         evidence_excerpt: evidence.slice(0, 5000),
         content_hash: contentHash(text),
       });
-      row.draft = buildDraft({ title, suspicious: facts.injectionSignals.length > 0, organization: siteOf(c.url), deadline: facts.deadline?.value ?? null, contact, profile: config.profile });
+      // Drafts only to OFFICIAL publishers: writing to an aggregator about someone else's programme is noise.
+      if (source.cls === "official") {
+        row.draft = buildDraft({ title, suspicious: facts.injectionSignals.length > 0, organization: siteOf(c.url), deadline: facts.deadline?.value ?? null, contact, profile: config.profile });
+      }
       const due = facts.deadline ? new Date(Date.parse(`${facts.deadline.value}T00:00:00Z`) - 7 * 86_400_000).toISOString() : null;
       await exec("task.create", {
         run_id: runId,
@@ -223,7 +236,7 @@ export async function runPipeline(
         priority: q.total >= 70 ? 1 : q.total >= 50 ? 2 : 3,
       });
       row.status = "persisted";
-      row.qualified = q.total >= 50;
+      row.qualified = q.total >= 50 && source.cls === "official";
       row.usefulDraft = Boolean(row.draft?.to && facts.deadline && source.cls === "official");
     } catch (err) {
       row.status = "failed";
@@ -247,6 +260,7 @@ export async function runPipeline(
     sourcesThirdParty: candidates.filter((c) => c.source?.cls === "third_party").length,
     sourcesUnverified: candidates.filter((c) => c.source?.cls === "unverified").length,
     qualified: candidates.filter((c) => c.qualified).length,
+    leads: candidates.filter((c) => c.lead).length,
     usefulDrafts: candidates.filter((c) => c.usefulDraft).length,
     reservedUsd: round6(meter.stats.reservedUsd),
     committedUsd: round6(meter.stats.committedUsd),
@@ -294,7 +308,7 @@ function renderReport(config: PipelineConfig, m: PipelineReport["metrics"], outc
   const out = [
     `# PIES research report ${config.today}`,
     "",
-    `Outcome: **${outcome}** · qualified ${m.qualified} · useful drafts ${m.usefulDrafts} (review only)`,
+    `Outcome: **${outcome}** · qualified ${m.qualified} · useful drafts ${m.usefulDrafts} (review only) · leads ${m.leads}`,
     `Sources: official ${m.sourcesOfficial} · third-party ${m.sourcesThirdParty} · unverified ${m.sourcesUnverified} · verified ${m.verified}`,
     `Queries ${m.queries} · hits ${m.hits} · duplicates ${m.duplicates} · extracted ${m.extracted} · saved ${m.persisted} · rejected ${m.rejected} · skipped ${m.skipped} · failed ${m.failed} · drafts ${m.drafts}`,
     `PIES accounting (not a provider bill): reserved $${m.reservedUsd.toFixed(4)}, recorded $${m.committedUsd.toFixed(4)}, overruns ${m.overruns}, failures charged ${m.chargedFailures}`,
@@ -302,6 +316,9 @@ function renderReport(config: PipelineConfig, m: PipelineReport["metrics"], outc
     "",
     "## Priority list",
     ...(ranked.length ? ranked.map((c, i) => `${i + 1}. ${c.title} — ${c.q!.total}/100, ${c.q!.eligibility}, deadline ${c.facts?.deadline?.value ?? "unknown"} (${c.url})`) : ["(none)"]),
+    "",
+    "## Leads (list pages: open them to find the official programme pages)",
+    ...(all.filter((c) => c.lead).map((c) => `- ${c.title} (${c.url})`)),
     "",
     "## Rejected",
     ...(all.filter((c) => c.status === "rejected").map((c) => `- ${c.title}: ${c.reason ?? ""}`) || []),

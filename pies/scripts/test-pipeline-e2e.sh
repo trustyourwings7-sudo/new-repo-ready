@@ -79,7 +79,9 @@ code=$(GITHUB_EVENT_NAME=schedule RUN || true)
 [ "$(count)" = '{"exa":0,"firecrawl":0}' ] || fail "paused: providers were called: $(count)"
 grep -q '"outcome":"paused"' "$WORK/out" || fail "paused: expected outcome paused: $(cat "$WORK/out")"
 grep -q '"trigger":"schedule"' "$WORK/out" || fail "paused: expected trigger schedule: $(cat "$WORK/out")"
-echo "ok   pause (paid_operations_enabled=false) on a scheduled run -> outcome paused, exit 0, zero provider calls"
+[ "$("${PSQL[@]}" -c "select status from public.agent_runs order by started_at desc limit 1")" = "cancelled" ] || fail "paused run must close as cancelled"
+[ "$("${PSQL[@]}" -c "select count(*) from public.notifications where kind = 'workflow_failure'")" = "0" ] || fail "a pause must not raise a run-failed notification"
+echo "ok   pause (paid_operations_enabled=false) on a scheduled run -> outcome paused, exit 0, zero provider calls, run cancelled, no failure notice"
 
 # 3. Paid on but providers not pricing-verified -> still denied.
 "${PSQL[@]}" -c "update public.user_preferences set paid_operations_enabled = true where user_id = '$USER_ID'"

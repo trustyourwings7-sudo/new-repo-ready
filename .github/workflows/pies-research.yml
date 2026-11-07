@@ -22,12 +22,12 @@ on:
         type: choice
         options: ["no", "yes"]
         default: "no"
-  # TEMPORARY TEST SCHEDULE (owner-approved checks, 2026-11-07): hourly at :37 so a real scheduled
-  # run can be observed. The database switch (paid_operations_enabled) decides whether a run
-  # researches or reports "paused". Replaced by the daily 05:17 UTC (07:17 Kigali) schedule only
-  # after the owner's final approval.
+  # Daily research at 05:17 UTC = 07:17 Kigali (owner-approved 2026-11-07, after the pause test,
+  # a scheduled paused run and a controlled live scheduled run). Off the hour to avoid queue delays;
+  # GitHub may still start scheduled runs late or skip a slot under load.
+  # Pause at any time: set user_preferences.paid_operations_enabled = false (runs report "paused").
   schedule:
-    - cron: "37 * * * *"
+    - cron: "17 5 * * *"
 
 permissions:
   contents: read

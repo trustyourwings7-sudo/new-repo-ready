@@ -287,8 +287,15 @@ export async function runPipeline(
     /* the report is still returned to the caller */
   }
   // An empty run is a successful run with nothing to show: reported as "empty", not as a failure.
-  const failedRun = outcome === "blocked" || (m.persisted === 0 && m.failed > 0);
-  await exec("run.finish", { run_id: runId, status: failedRun ? "failed" : "succeeded", ...(failedRun ? { error: (stoppedEarly ?? "all candidates failed").slice(0, 500) } : {}) });
+  // Paused by the owner (paid operations off) is deliberate: close the run as "cancelled", which the
+  // database does not turn into a "run failed" notification (a paused schedule would raise one daily).
+  const pausedRun = outcome === "blocked" && (stoppedEarly ?? "").includes("paid_operations_disabled");
+  const failedRun = !pausedRun && (outcome === "blocked" || (m.persisted === 0 && m.failed > 0));
+  await exec("run.finish", {
+    run_id: runId,
+    status: pausedRun ? "cancelled" : failedRun ? "failed" : "succeeded",
+    ...(pausedRun ? { error: "paused: paid operations are off" } : failedRun ? { error: (stoppedEarly ?? "all candidates failed").slice(0, 500) } : {}),
+  });
   return { runKey: config.runKey, metrics: m, outcome, stoppedEarly, candidates, markdown };
 }
 

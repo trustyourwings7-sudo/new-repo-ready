@@ -181,9 +181,11 @@ describe("research workflow guards (.github/workflows/pies-research.yml)", () =>
     expect(wf).toContain("PIES_LIVE_RESEARCH: ${{ (github.event_name == 'schedule' || github.event.inputs.live == 'yes') && '1' || '' }}");
     expect(wf).toContain("PIES_CONNECTION_CHECK: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.live != 'yes') && '1' || '' }}");
   });
-  it("runs once a day at 05:17 UTC (07:17 Kigali), and nothing more often", () => {
-    expect(wf).toMatch(/schedule:\s*\n\s*- cron: "17 5 \* \* \*"/);
-    expect((wf.match(/- cron:/g) ?? []).length).toBe(1);
+  it("tries daily from 05:17 UTC (07:17 Kigali), with at most 3 same-day attempts and nothing hourly", () => {
+    const crons = [...wf.matchAll(/- cron: "([^"]+)"/g)].map((m) => m[1]!);
+    expect(crons[0]).toBe("17 5 * * *");
+    expect(crons.length).toBeLessThanOrEqual(3);
+    for (const c of crons) expect(c, c).toMatch(/^\d{1,2} \d{1,2} \* \* \*$/); // fixed minute and hour: once a day each
   });
   it("enforces the owner's limits: 3 searches and 4 pages per run", () => {
     expect(wf).toMatch(/PIES_MAX_SEARCHES: "3"/);

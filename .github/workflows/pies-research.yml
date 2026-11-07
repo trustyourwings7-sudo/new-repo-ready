@@ -22,12 +22,15 @@ on:
         type: choice
         options: ["no", "yes"]
         default: "no"
-  # Daily research at 05:17 UTC = 07:17 Kigali (owner-approved 2026-11-07, after the pause test,
-  # a scheduled paused run and a controlled live scheduled run). Off the hour to avoid queue delays;
-  # GitHub may still start scheduled runs late or skip a slot under load.
+  # Daily research, first attempt 05:17 UTC = 07:17 Kigali (owner-approved 2026-11-07).
+  # GitHub skips scheduled slots under load (observed 2026-11-07: 2 of ~13 hourly slots fired), so
+  # there are three attempts; the first that runs does the research, later ones report
+  # "already_done" (budget keys are per day, nothing is spent twice).
   # Pause at any time: set user_preferences.paid_operations_enabled = false (runs report "paused").
   schedule:
     - cron: "17 5 * * *"
+    - cron: "47 6 * * *"
+    - cron: "17 9 * * *"
 
 permissions:
   contents: read

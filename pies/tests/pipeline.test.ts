@@ -234,3 +234,51 @@ describe("pipeline end to end (mock providers, in-memory governor)", () => {
     expect(r.metrics.skipped).toBe(3);
   });
 });
+
+describe("first live run regressions (2026-11-07)", () => {
+  it("recognises list/aggregator round-ups as leads", async () => {
+    const { isListingPage } = await import("../src/lib/pipeline/source.ts");
+    expect(isListingPage("Scholarships for Rwandans 2027: 451 open", "")).toBe(true);
+    expect(isListingPage("15 Global Scholarship Opportunities Currently Open", "")).toBe(true);
+    expect(isListingPage("Fully Funded Scholarships for Africans Open Now 2027", "")).toBe(true);
+    expect(isListingPage("Top 10 grants for young founders", "")).toBe(true);
+    expect(isListingPage("Mastercard Foundation Scholars Program", "Deadline: 30 November 2026.")).toBe(false);
+    expect(isListingPage("A programme", "Deadline 1. Closes 2. Deadline 3. Closes 4. Deadline 5. Apply by 6.")).toBe(true);
+  });
+
+  it("does not save a list page as an opportunity, take one item's date as its deadline, or draft to it", async () => {
+    const { runPipeline } = await import("../src/lib/pipeline/run.ts");
+    const url = "https://qualifyafrica.com/scholarships/rwanda";
+    const search = { name: "exa", search: vi.fn(async () => ({ hits: [{ url, title: "Scholarships for Rwandans 2027: 451 open", publishedAt: null, snippet: "" }], reportedUsd: 0.007 })) };
+    const extract = { name: "firecrawl", extract: vi.fn(async () => ({ url, title: "Scholarships for Rwandans 2027: 451 open", markdown: "Closes 7 November 2026 · Open in 47 African countries, including Rwanda. Fully funded.", statusCode: 200, reportedCredits: 1 })) };
+    const sink = memorySink({ budgetUsd: 2, paidEnabled: true });
+    const meter = new MeteredResearch(search, extract, { rpc: sink.rpc, userId: "u", runKey: "2026-11-07:t", caps: { searches: 1, extractions: 1 }, pacingMs: { exa: 0, firecrawl: 0 } });
+    const r = await runPipeline(
+      { runKey: "2026-11-07:t", today: "2026-11-07", trigger: "manual", profile, queries: [{ project: "education-funding", category: "funding", query: "q", numResults: 3, strategicFit: "primary" }] },
+      { meter, sink, robots: { allowed: async () => true } as unknown as RobotsPolicy },
+    );
+    expect(r.metrics).toMatchObject({ leads: 1, persisted: 0, qualified: 0, drafts: 0 });
+    expect(r.outcome).toBe("empty");
+    expect(sink.calls.some((c) => c.operation === "opportunity.upsert")).toBe(false);
+    expect(r.markdown).toContain("Leads (list pages");
+  });
+
+  it("asks Exa to exclude known aggregators, and never counts a third-party page as qualified", async () => {
+    const { ExaSearch } = await import("../src/lib/research/exa.ts");
+    const f = vi.fn(async () => new Response(JSON.stringify({ results: [] }), { status: 200 }));
+    await new ExaSearch("k", { fetchImpl: f }).search("q", 3, { excludeDomains: ["qualifyafrica.com", "QualifyAfrica.com", "bad domain!"] });
+    expect(JSON.parse(String((f.mock.calls[0] as unknown as [string, RequestInit])[1].body)).excludeDomains).toEqual(["qualifyafrica.com"]);
+    const s = { name: "exa", search: vi.fn(async () => ({ hits: [{ url: "https://news.example.com/award", title: "Award", publishedAt: null, snippet: "s" }], reportedUsd: 0.007 })) };
+    const e = { name: "firecrawl", extract: vi.fn(async (u: string) => ({ url: u, title: "", markdown: "Award. Open to all nationalities. No application fee. Applicants aged 18 to 30. Deadline 30 November 2026. Fully funded. Operations and sales.", statusCode: 200, reportedCredits: 1 })) };
+    const sink = memorySink({ budgetUsd: 2, paidEnabled: true });
+    const meter = new MeteredResearch(s, e, { rpc: sink.rpc, userId: "u", runKey: "2026-11-07:q", caps: { searches: 1, extractions: 1 }, pacingMs: { exa: 0, firecrawl: 0 } });
+    const r = await runPipeline(
+      { runKey: "2026-11-07:q", today: "2026-11-07", trigger: "manual", profile, queries: [{ project: "education-funding", category: "funding", query: "q", numResults: 3, strategicFit: "primary" }] },
+      { meter, sink, robots: { allowed: async () => true } as unknown as RobotsPolicy },
+    );
+    expect((s.search.mock.calls[0] as unknown as [string, number, { excludeDomains: string[] }])[2]).toMatchObject({ excludeDomains: expect.arrayContaining(["qualifyafrica.com", "opportunitydesk.org"]) });
+    expect(r.candidates[0]!.q!.total).toBeGreaterThanOrEqual(50);
+    expect(r.metrics).toMatchObject({ persisted: 1, qualified: 0, drafts: 0 });
+    expect(r.outcome).toBe("low_yield");
+  });
+});

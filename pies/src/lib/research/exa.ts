@@ -20,7 +20,7 @@ export interface SearchOutcome {
 
 export interface SearchProvider {
   readonly name: string;
-  search(query: string, numResults: number): Promise<SearchOutcome>;
+  search(query: string, numResults: number, opts?: { excludeDomains?: string[] }): Promise<SearchOutcome>;
 }
 
 // Tolerant of field variations; strict about what matters. A result without a valid URL is
@@ -56,14 +56,23 @@ export class ExaSearch implements SearchProvider {
     this.baseUrl = baseUrl;
   }
 
-  async search(query: string, numResults: number): Promise<SearchOutcome> {
+  async search(query: string, numResults: number, opts: { excludeDomains?: string[] } = {}): Promise<SearchOutcome> {
     const q = query.trim().slice(0, 500);
     if (!q) throw new ProviderError(this.name, "bad_request", null);
     const n = Math.min(Math.max(Math.trunc(numResults), 1), EXA_MAX_RESULTS);
     const raw = await postJson(
       `${this.baseUrl}/search`,
       { "x-api-key": this.apiKey },
-      { query: q, type: "auto", numResults: n, contents: { text: { maxCharacters: 1500 } } },
+      {
+        query: q,
+        type: "auto",
+        numResults: n,
+        contents: { text: { maxCharacters: 1500 } },
+        // Aggregator and list sites are excluded at the source: they are not the official publisher.
+        ...(opts.excludeDomains?.length
+          ? { excludeDomains: [...new Set(opts.excludeDomains.map((d) => d.trim().toLowerCase()).filter((d) => /^[a-z0-9.*-]+(\/[\w./-]*)?$/.test(d)))].slice(0, 1200) }
+          : {}),
+      },
       // Paid endpoint: retry only 429 (never processed). A retry after a timeout/5xx could bill twice.
       { ...this.http, provider: this.name, retryOn: ["rate_limited"] },
     );

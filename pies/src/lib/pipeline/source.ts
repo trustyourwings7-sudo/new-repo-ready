@@ -32,6 +32,15 @@ export const KNOWN_AGGREGATORS = [
   "glassdoor.com",
   "medium.com",
   "wikipedia.org",
+  // Seen in the first live run (2026-11-07): all three results were list/aggregator sites.
+  "qualifyafrica.com",
+  "opportunitylab.net",
+  "scholarshipportal.com",
+  "scholarshipdb.net",
+  "worldscholarshipforum.com",
+  "scholarshipregion.com",
+  "opportunitiescorners.com",
+  "youthop.com",
 ];
 
 const INSTITUTIONAL = [/\.gov$/, /\.gov\.[a-z]{2}$/, /\.edu$/, /\.edu\.[a-z]{2}$/, /\.ac\.[a-z]{2}$/, /\.int$/, /\.mil$/, /\.gouv\.[a-z]{2}$/, /\.go\.[a-z]{2}$/];
@@ -59,4 +68,16 @@ export function classifySource(
 /** Database source_type for each class (opportunity_sources check constraint). */
 export function sourceTypeFor(cls: SourceClass): "official" | "aggregator" | "search_result" {
   return cls === "official" ? "official" : cls === "third_party" ? "aggregator" : "search_result";
+}
+
+/**
+ * A page that lists many opportunities (an aggregator round-up) is a LEAD, not an opportunity:
+ * its single "deadline" belongs to one item on the list, and its publisher is not the funder.
+ * First live run (2026-11-07): "Scholarships for Rwandans 2027: 451 open" was saved as one
+ * opportunity with one item's closing date. Leads are reported, never saved or drafted to.
+ */
+export function isListingPage(title: string, text: string): boolean {
+  if (/\b\d{2,}\s*\+?\s*(open|scholarships?|grants?|opportunities|programmes?|programs?|fellowships?|jobs|internships)\b/i.test(title)) return true;
+  if (/\b(top|best)\s+\d+\b|\blist of\b|\b(currently|now)\s+open\b|\bopen\s+now\b|\bround-?up\b/i.test(title)) return true;
+  return (text.match(/\b(deadline|closes|closing date|apply by)\b/gi) ?? []).length >= 6;
 }

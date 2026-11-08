@@ -323,3 +323,30 @@ describe("second live run regressions (2026-11-07)", () => {
     expect(extract.extract.mock.calls.map((c) => new URL(c[0]).hostname.split(".")[0])).toEqual(["eu1", "ca1", "grants1"]);
   });
 });
+
+describe("deadline extraction (wider wording and formats)", () => {
+  const T = "2026-11-08";
+  it("reads dotted European dates", () => {
+    expect(extractFacts("Applications are accepted until 15.01.2027.", T).deadline).toMatchObject({ value: "2027-01-15", confidence: "Likely" });
+  });
+  it("reads a table label with the date on the next line", () => {
+    const f = extractFacts("Application deadline\n15 December 2026\nResults\n1 March 2027", T);
+    expect(f.deadline).toMatchObject({ value: "2026-12-15", confidence: "Likely" });
+  });
+  it("reads 'no later than' and 'submitted by' wording", () => {
+    expect(extractFacts("Documents must reach us no later than January 20, 2027.", T).deadline?.value).toBe("2027-01-20");
+    expect(extractFacts("Nominations must be submitted by 3 February 2027.", T).deadline?.value).toBe("2027-02-03");
+  });
+  it("infers the year of a yearless date as a guess, which is never verified", () => {
+    const f = extractFacts("The application deadline is January 15.", T);
+    expect(f.deadline).toMatchObject({ value: "2027-01-15", confidence: "Guessing" });
+    expect(verificationStatus({ cls: "official" }, f)).toBe("partially_verified");
+  });
+  it("prefers a dated deadline over a guessed one, and does not treat '15 Nov. 2026' as yearless", () => {
+    const f = extractFacts("Deadline: 1 December. Applications close 15 Nov. 2026.", T);
+    expect(f.deadline).toMatchObject({ value: "2026-11-15", confidence: "Likely" });
+  });
+  it("still ignores past dates and dates in non-deadline sentences", () => {
+    expect(extractFacts("Founded on 1 December 2026. The deadline was 1 October 2026.", T).deadline).toBeNull();
+  });
+});

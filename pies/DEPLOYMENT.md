@@ -1,6 +1,6 @@
 # Deployment and Secure Setup
 
-Nothing here has been done for you. Every step is free, and none buys anything. Public deployment is **not** approved yet.
+Every step is free, and none buys anything. Status (2026-11-08): sections 1–4 are done and the app is deployed (section 6).
 
 ## 1. Supabase project (secure configuration)
 
@@ -65,6 +65,16 @@ Sign in, then **Settings → Load initialization context**. This creates the pro
 
 Recommended: no OAuth (compose links). If you choose OAuth, read SECURITY.md → Gmail first.
 
-## 6. Hosting
+## 6. Hosting (Vercel Hobby, live)
 
-Not chosen. ARCHITECTURE.md → Hosting lists the options.
+- **URL:** https://pies-trustyourwings.vercel.app. Vercel project `pies-trustyourwings` on the owner's Hobby account; Node 22.x; framework Next.js.
+- **Vercel environment variables** (Production + Preview): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the publishable key, public by design), `PIES_ALLOWED_EMAILS` (the owner email only), `PIES_SITE_URL`. Nothing else: no service-role key, no automation secret, no provider keys. Research runs in GitHub Actions, not on Vercel.
+- **Supabase Auth:** Site URL = the Vercel URL; Redirect URLs = `<site>/auth/callback` only; "Allow new users to sign up" = off. Verify sign-ups stay off with `GET <supabase-url>/auth/v1/settings` → `disable_signup: true`.
+- **Privacy:** every page needs a session plus the email allowlist; RLS returns only the owner's rows; anonymous REST reads are denied; `X-Robots-Tag: noindex` keeps it out of search engines.
+- **Redeploy** (not linked to GitHub, so merges do not auto-deploy): from a copy of the tracked files *without* `.git` (Hobby blocks deploys whose commit author is not on the account), with `.vercel/project.json` present:
+  ```bash
+  git ls-files | tar -cf - -T - | tar -xf - -C /path/to/copy && cp -r .vercel /path/to/copy/
+  cd /path/to/copy && npx -y vercel@65.2.0 deploy --prod --yes --token <token>
+  ```
+  To get auto-deploys instead, install the Vercel GitHub app on this repository and connect the project (root directory `pies`).
+- **Free-plan limits:** Supabase's built-in email sends only a few sign-in links per hour. A paused Supabase Free project (after about a week without activity) stops the site and research; daily research runs keep it active.

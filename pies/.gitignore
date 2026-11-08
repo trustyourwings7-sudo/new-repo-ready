@@ -18,3 +18,4 @@ intel/
 /config.json
 /config.local.json
 /*.report.md
+.vercel

@@ -31,7 +31,8 @@ const MON = "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul
 function sentences(text: string): string[] {
   return text
     .replace(/\r/g, "")
-    .split(/(?<=[.!?])\s+|\n+/)
+    // Do not split after an abbreviated month ("15 Nov. 2026").
+    .split(/(?<!\b(?:jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.)(?<=[.!?])\s+|\n+/i)
     .map((s) => s.replace(/\s+/g, " ").trim())
     .filter((s) => s.length > 3 && s.length < 600);
 }
@@ -61,8 +62,35 @@ export function parseDates(s: string): string[] {
     const v = iso(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
     if (v) out.push(v);
   }
+  // Dotted day.month.year (European official sites: "15.01.2027"). Slashes stay ambiguous.
+  for (const m of s.matchAll(/\b(\d{1,2})\.(\d{1,2})\.(20\d{2})\b/g)) {
+    const v = iso(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    if (v) out.push(v);
+  }
   return out;
 }
+
+/**
+ * Dates written without a year ("15 January", "January 15th"). The year is inferred as the next
+ * occurrence on or after today, so callers must mark these as a guess, never as verified.
+ */
+export function parseYearlessDates(s: string, today: string): string[] {
+  const out: string[] = [];
+  const y0 = Number(today.slice(0, 4));
+  const add = (mon: string, day: string) => {
+    for (const y of [y0, y0 + 1]) {
+      const v = iso(y, monthIndex(mon), Number(day));
+      if (v && v >= today) return void out.push(v);
+    }
+  };
+  // Skip dates that already carry a year (handled by parseDates).
+  for (const m of s.matchAll(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?${MON}\\b\\.?(?![.,]?\\s+20\\d{2})`, "gi"))) add(m[2]!, m[1]!);
+  for (const m of s.matchAll(new RegExp(`\\b${MON}\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b(?![.,]?\\s+20\\d{2})(?!\\d)`, "gi"))) add(m[1]!, m[2]!);
+  return out;
+}
+
+const DEADLINE_WORDS =
+  /\b(deadlines?|closing date|closes?|closed on|apply by|apply before|applications? (?:close|due|must be (?:received|submitted))|submission (?:date|deadline)|due (?:date|by)|no later than|not later than|last (?:day|date)|until|nominations? (?:due|close|deadline)|submit(?:ted)? (?:by|before)|accepted (?:until|through)|application period|call (?:closes|open until))\b/i;
 
 const INJECTION = [
   /ignore (all |any )?(previous|prior|above) (instructions|prompts)/i,
@@ -92,13 +120,23 @@ export function extractFacts(text: string, today: string): PageFacts {
     injectionSignals: injectionSignals(text),
   };
 
-  // Deadline: the earliest not-past date in a sentence that names a deadline.
-  let best: { date: string; quote: string } | null = null;
-  for (const s of ss) {
-    if (!/\b(deadline|closing date|closes|apply by|applications? (close|due)|submission date|due date)\b/i.test(s)) continue;
-    for (const d of parseDates(s)) if (d >= today && (!best || d < best.date)) best = { date: d, quote: s };
-  }
-  if (best) facts.deadline = { value: best.date, quote: best.quote, confidence: "Likely" };
+  // Deadline: the earliest not-past date in a sentence that names a deadline. A label with no
+  // date ("Application deadline" in a table) is read together with the next line. Dates with a
+  // year are "Likely"; a year we had to infer is "Guessing" and is never counted as verified.
+  let best: { date: string; quote: string; guessed: boolean } | null = null;
+  const consider = (d: string, quote: string, guessed: boolean) => {
+    if (d < today) return;
+    if (!best || (best.guessed && !guessed) || (best.guessed === guessed && d < best.date)) best = { date: d, quote, guessed };
+  };
+  ss.forEach((s, i) => {
+    if (!DEADLINE_WORDS.test(s)) return;
+    let text = s;
+    if (!parseDates(s).length && !parseYearlessDates(s, today).length && s.length < 80 && ss[i + 1]) text = `${s} ${ss[i + 1]}`;
+    for (const d of parseDates(text)) consider(d, text, false);
+    for (const d of parseYearlessDates(text, today)) consider(d, text, true);
+  });
+  const found = best as { date: string; quote: string; guessed: boolean } | null;
+  if (found) facts.deadline = { value: found.date, quote: found.quote, confidence: found.guessed ? "Guessing" : "Likely" };
 
   for (const s of ss) {
     const age =
@@ -148,12 +186,13 @@ export function extractFacts(text: string, today: string): PageFacts {
 export type VerificationStatus = "verified" | "partially_verified" | "unverified";
 
 /**
- * verified            OFFICIAL source (see source.ts) and the deadline is quoted from it.
+ * verified            OFFICIAL source (see source.ts) and a dated deadline (with its year) is quoted from it.
  * partially_verified  official source, but no deadline found on it.
  * unverified          third-party, not fetched, non-2xx, or instruction-like text on the page.
  * A fetched page is evidence that the page exists, not that its claims are authoritative.
  */
 export function verificationStatus(source: { cls: "official" | "third_party" | "unverified" }, facts: PageFacts): VerificationStatus {
   if (source.cls !== "official" || facts.injectionSignals.length) return "unverified";
-  return facts.deadline ? "verified" : "partially_verified";
+  // A deadline whose year was inferred is a lead to check, not a verified fact.
+  return facts.deadline && facts.deadline.confidence !== "Guessing" ? "verified" : "partially_verified";
 }

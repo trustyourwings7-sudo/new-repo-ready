@@ -131,7 +131,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       <Card id="priority" title="B · High-priority opportunities" aside="score-ranked, eligible or unknown eligibility">
         {render(d?.priority, (rows) =>
           rows.length === 0 ? (
-            <Empty>No scored opportunities yet. Discovery and qualification start in Phase 2.</Empty>
+            <Empty>No scored opportunities yet. Daily research saves new finds unscored until their facts are verified; see all of them under Opportunity Intelligence.</Empty>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">

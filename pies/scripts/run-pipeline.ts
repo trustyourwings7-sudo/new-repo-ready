@@ -169,10 +169,13 @@ try {
   // Paused = the owner's database switch is off. That is a deliberate state, not a failure:
   // exit 0 so a paused schedule does not raise a red run or a failure email every day.
   const paused = report.outcome === "blocked" && (report.stoppedEarly ?? "").includes("paid_operations_disabled");
-  console.log(JSON.stringify({ ok: true, trigger, caps, outcome: paused ? "paused" : report.outcome, metrics: report.metrics, stoppedEarly: report.stoppedEarly ? report.stoppedEarly.split(":")[0] : null }));
+  // Already done = a later daily attempt after today's research succeeded (several cron times guard
+  // against GitHub skipping a scheduled slot). Also exit 0: nothing is wrong and nothing was spent.
+  const alreadyDone = report.outcome === "blocked" && (report.stoppedEarly ?? "").includes("duplicate_operation");
+  console.log(JSON.stringify({ ok: true, trigger, caps, outcome: paused ? "paused" : alreadyDone ? "already_done" : report.outcome, metrics: report.metrics, stoppedEarly: report.stoppedEarly ? report.stoppedEarly.split(":")[0] : null }));
   await sink.close();
   // blocked = nothing was extracted (budget, gate, auth, quota). empty/low_yield are reported, not failures.
-  process.exit(report.outcome === "blocked" && !paused ? 4 : 0);
+  process.exit(report.outcome === "blocked" && !paused && !alreadyDone ? 4 : 0);
 } catch (err) {
   console.error(JSON.stringify({ ok: false, error: err instanceof Error ? err.message.slice(0, 200) : "unknown" }));
   await sink.close().catch(() => {});

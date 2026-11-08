@@ -287,8 +287,24 @@ export async function runPipeline(
     /* the report is still returned to the caller */
   }
   // An empty run is a successful run with nothing to show: reported as "empty", not as a failure.
-  const failedRun = outcome === "blocked" || (m.persisted === 0 && m.failed > 0);
-  await exec("run.finish", { run_id: runId, status: failedRun ? "failed" : "succeeded", ...(failedRun ? { error: (stoppedEarly ?? "all candidates failed").slice(0, 500) } : {}) });
+  // Paused by the owner (paid operations off) is deliberate: close the run as "cancelled", which the
+  // database does not turn into a "run failed" notification (a paused schedule would raise one daily).
+  const pausedRun = outcome === "blocked" && (stoppedEarly ?? "").includes("paid_operations_disabled");
+  // Already done today = this slot's searches were already paid for (e.g. a second daily attempt after
+  // the first succeeded). Deliberate, not a failure.
+  const alreadyDone = outcome === "blocked" && (stoppedEarly ?? "").includes("duplicate_operation");
+  const failedRun = !pausedRun && !alreadyDone && (outcome === "blocked" || (m.persisted === 0 && m.failed > 0));
+  await exec("run.finish", {
+    run_id: runId,
+    status: pausedRun || alreadyDone ? "cancelled" : failedRun ? "failed" : "succeeded",
+    ...(pausedRun
+      ? { error: "paused: paid operations are off" }
+      : alreadyDone
+        ? { error: "already done: today's research slot was already completed" }
+        : failedRun
+          ? { error: (stoppedEarly ?? "all candidates failed").slice(0, 500) }
+          : {}),
+  });
   return { runKey: config.runKey, metrics: m, outcome, stoppedEarly, candidates, markdown };
 }
 

@@ -79,7 +79,9 @@ code=$(GITHUB_EVENT_NAME=schedule RUN || true)
 [ "$(count)" = '{"exa":0,"firecrawl":0}' ] || fail "paused: providers were called: $(count)"
 grep -q '"outcome":"paused"' "$WORK/out" || fail "paused: expected outcome paused: $(cat "$WORK/out")"
 grep -q '"trigger":"schedule"' "$WORK/out" || fail "paused: expected trigger schedule: $(cat "$WORK/out")"
-echo "ok   pause (paid_operations_enabled=false) on a scheduled run -> outcome paused, exit 0, zero provider calls"
+[ "$("${PSQL[@]}" -c "select status from public.agent_runs order by started_at desc limit 1")" = "cancelled" ] || fail "paused run must close as cancelled"
+[ "$("${PSQL[@]}" -c "select count(*) from public.notifications where kind = 'workflow_failure'")" = "0" ] || fail "a pause must not raise a run-failed notification"
+echo "ok   pause (paid_operations_enabled=false) on a scheduled run -> outcome paused, exit 0, zero provider calls, run cancelled, no failure notice"
 
 # 3. Paid on but providers not pricing-verified -> still denied.
 "${PSQL[@]}" -c "update public.user_preferences set paid_operations_enabled = true where user_id = '$USER_ID'"
@@ -127,8 +129,8 @@ code=$(env -u PIES_OWNER_USER_ID -u PIES_AUTOMATION_INTEGRATION_ID -u PIES_PRICE
 # Same day, so the budget keys are duplicates: the run must reach the database (not exit 3 at the
 # local gate) and stop at the governor with no new spend.
 runs_before_cfg=$(q "select count(*) from public.agent_runs where user_id='$USER_ID'")
-[ "$code" = "4" ] || fail "ids-in-config run: expected exit 4 (same-day duplicate), got $code: $(cat "$WORK/err")"
-grep -q '"stoppedEarly":"budget"' "$WORK/out" || fail "ids-in-config run: expected governor duplicate stop: $(cat "$WORK/out")"
+[ "$code" = "0" ] || fail "ids-in-config run: expected exit 0 (already done today), got $code: $(cat "$WORK/err")"
+grep -q '"outcome":"already_done"' "$WORK/out" || fail "ids-in-config run: expected outcome already_done: $(cat "$WORK/out")"
 [ "$(count)" = "$before" ] || fail "ids-in-config run called providers again"
 echo "ok   ids + price date from config only -> passes the gate, reaches the DB, no repeat spend"
 
@@ -143,7 +145,10 @@ sched_count=$(count)
 echo "ok   scheduled run -> own daily slot, does research, env caps (2 pages) override secret (10)"
 code=$(GITHUB_EVENT_NAME=schedule PIES_MAX_SEARCHES=3 PIES_MAX_EXTRACTIONS=2 RUN || true)
 [ "$(count)" = "$sched_count" ] || fail "second scheduled run the same day spent again"
-echo "ok   second scheduled run same day -> zero new provider calls"
+[ "$code" = "0" ] || fail "second scheduled run: expected exit 0 (already done), got $code"
+grep -q '"outcome":"already_done"' "$WORK/out" || fail "second scheduled run: expected already_done: $(cat "$WORK/out")"
+[ "$(q "select status from public.agent_runs order by started_at desc limit 1")" = "cancelled" ] || fail "already-done run must close as cancelled"
+echo "ok   second scheduled run same day -> already_done, exit 0, run cancelled, zero new provider calls"
 
 # 6. Secrets never reach output.
 if grep -qE 'test-exa-key|test-fc-key|pipe-only-password' "$WORK/out" "$WORK/err"; then fail "secret appeared in runner output"; fi

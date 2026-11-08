@@ -174,7 +174,8 @@ describe("pipeline end to end (mock providers, in-memory governor)", () => {
     expect(s.extract.extract).not.toHaveBeenCalled();
     expect(r.stoppedEarly).toMatch(/paid_operations_disabled/);
     expect(r.outcome).toBe("blocked");
-    expect(s.sink.calls.at(-1)).toMatchObject({ operation: "run.finish", payload: { status: "failed" } });
+    // Paused (paid off) closes as "cancelled": no daily "run failed" notification.
+    expect(s.sink.calls.at(-1)).toMatchObject({ operation: "run.finish", payload: { status: "cancelled" } });
   });
 
   it("stops extracting when the budget runs out, keeping what it saved", async () => {

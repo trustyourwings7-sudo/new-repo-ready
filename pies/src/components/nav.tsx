@@ -19,6 +19,16 @@ export function Nav() {
   const pathname = usePathname();
   return (
     <nav aria-label="Modules" className="relative flex min-w-0 max-w-full gap-1 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0">
+      <Link
+        href="/ask"
+        aria-current={pathname === "/ask" ? "page" : undefined}
+        className={`flex shrink-0 items-center gap-2 rounded border border-signal-400/40 px-2.5 py-1.5 text-sm font-medium whitespace-nowrap ${
+          pathname === "/ask" ? "bg-ink-800 text-mist-100" : "text-signal-400 hover:bg-ink-850"
+        }`}
+      >
+        <span aria-hidden>›</span>
+        <span>Ask PIES</span>
+      </Link>
       {MODULES.map((m) => {
         const href = `/${m.slug}`;
         const active = pathname === href;

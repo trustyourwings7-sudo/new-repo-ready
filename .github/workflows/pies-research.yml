@@ -1,4 +1,6 @@
 name: PIES research run
+# The PIES app finds the run it started by this title.
+run-name: ${{ github.event.inputs.request_id && format('PIES research app-{0}', github.event.inputs.request_id) || 'PIES research run' }}
 # The n8n replacement. Runs pies/scripts/run-pipeline.ts on a GitHub-hosted runner.
 #
 # ACTIVATION REQUIRES THE OWNER. Today this only runs when started by hand, and even then
@@ -22,6 +24,20 @@ on:
         type: choice
         options: ["no", "yes"]
         default: "no"
+      # Set by the PIES app's "Research Now" (owner-only). Empty = the configured daily queries.
+      query:
+        description: "Optional one-off search (3-120 letters/digits/basic punctuation)"
+        type: string
+        default: ""
+      category:
+        description: "Category for the one-off search"
+        type: choice
+        options: ["scholarship", "grant", "funding", "education", "employment", "accelerator", "partnership", "consulting", "commercial", "other"]
+        default: "scholarship"
+      request_id:
+        description: "PIES app request id (budget idempotency key)"
+        type: string
+        default: ""
   # Daily research, first attempt 05:17 UTC = 07:17 Kigali (owner-approved 2026-11-07).
   # GitHub skips scheduled slots under load (observed 2026-11-07: 2 of ~13 hourly slots fired), so
   # there are three attempts; the first that runs does the research, later ones report
@@ -67,5 +83,9 @@ jobs:
           # Owner limits: at most 3 searches and 4 official-page extractions per run (lower of these and the secret).
           PIES_MAX_SEARCHES: "3"
           PIES_MAX_EXTRACTIONS: "4"
+          # Inputs go through env (never interpolated into the shell); the runner validates them.
+          PIES_ADHOC_QUERY: ${{ github.event.inputs.query }}
+          PIES_ADHOC_CATEGORY: ${{ github.event.inputs.category }}
+          PIES_REQUEST_ID: ${{ github.event.inputs.request_id }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}

@@ -68,7 +68,10 @@ Recommended: no OAuth (compose links). If you choose OAuth, read SECURITY.md →
 ## 6. Hosting (Vercel Hobby, live)
 
 - **URL:** https://pies-trustyourwings.vercel.app. Vercel project `pies-trustyourwings` on the owner's Hobby account; Node 22.x; framework Next.js.
-- **Vercel environment variables** (Production + Preview): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the publishable key, public by design), `PIES_ALLOWED_EMAILS` (the owner email only), `PIES_SITE_URL`. Nothing else: no service-role key, no automation secret, no provider keys. Research runs in GitHub Actions, not on Vercel.
+- **Vercel environment variables** (Production + Preview): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the publishable key, public by design), `PIES_ALLOWED_EMAILS` (the owner email only), `PIES_SITE_URL`. Production only, secret: `GITHUB_ACTIONS_TOKEN` (fine-grained, this repository only, Actions read/write; created by the owner, 90 days) and `CRON_SECRET` (random, for the daily timer). No service-role key, no database password, no provider keys: research runs in GitHub Actions, not on Vercel.
+- **Region:** functions run in `lhr1` (London), next to Supabase `eu-west-2`. Measured on the live site via `/api/health`: 100–580 ms per database round trip from the default `iad1`, 20–55 ms from `lhr1`.
+- **Daily timer:** `vercel.json` → Vercel Cron `17 5 * * *` (Hobby: once a day, within the hour). See docs/RUNNER.md → How runs start.
+- **Rotate the GitHub token** before it expires: create a new one with the same settings, replace `GITHUB_ACTIONS_TOKEN` in Vercel, redeploy. Until then the daily timer and Research Now stop; GitHub's own schedule remains as a backup.
 - **Supabase Auth:** Site URL = the Vercel URL; Redirect URLs = `<site>/auth/callback` only; "Allow new users to sign up" = off. Verify sign-ups stay off with `GET <supabase-url>/auth/v1/settings` → `disable_signup: true`.
 - **Privacy:** every page needs a session plus the email allowlist; RLS returns only the owner's rows; anonymous REST reads are denied; `X-Robots-Tag: noindex` keeps it out of search engines.
 - **Redeploy** (not linked to GitHub, so merges do not auto-deploy): from a copy of the tracked files *without* `.git` (Hobby blocks deploys whose commit author is not on the account), with `.vercel/project.json` present:

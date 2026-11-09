@@ -166,7 +166,8 @@ async function budget(sb: SupabaseClient): Promise<Reply> {
 async function appRunsToday(): Promise<WorkflowRun[]> {
   const runs = await listRuns(30);
   const today = todayUtc();
-  return runs.filter((r) => r.title.startsWith("PIES research app-") && r.createdAt.startsWith(today));
+  // The daily timer's run ("app-sched-…") is the scheduled run, not one of the owner's manual runs.
+  return runs.filter((r) => r.title.startsWith("PIES research app-") && !r.title.startsWith("PIES research app-sched-") && r.createdAt.startsWith(today));
 }
 
 /** Pre-flight for live research: refuses with a reason instead of starting anything doomed. */
@@ -234,7 +235,7 @@ async function health(sb: SupabaseClient): Promise<Reply> {
 
   try {
     const runs = await listRuns(10);
-    const sched = runs.find((r) => r.event === "schedule");
+    const sched = runs.find((r) => r.event === "schedule" || r.title.includes("app-sched-"));
     items.push({ title: "Scheduled workflow (GitHub)", detail: sched ? `last ${sched.status === "completed" ? sched.conclusion : sched.status} at ${sched.createdAt.slice(0, 16).replace("T", " ")} UTC` : "no scheduled run found", href: sched?.url, tone: sched?.conclusion === "failure" ? "bad" : "ok" });
   } catch {
     items.push({ title: "Scheduled workflow (GitHub)", detail: "GitHub did not answer", tone: "warn" });
@@ -258,10 +259,10 @@ async function diagnose(sb: SupabaseClient): Promise<Reply> {
 
   // 1. Schedule: did GitHub start today's run at all?
   if (ghRuns) {
-    const schedToday = ghRuns.filter((r) => r.event === "schedule" && r.createdAt.startsWith(today));
+    const schedToday = ghRuns.filter((r) => (r.event === "schedule" || r.title.includes("app-sched-")) && r.createdAt.startsWith(today));
     const hourUtc = new Date().getUTCHours() + new Date().getUTCMinutes() / 60;
     if (!schedToday.length && hourUtc > 5.5) {
-      items.push({ title: "GitHub has not started today's scheduled run yet", detail: `Planned tries: 05:17, 06:47 and 09:17 UTC. GitHub delays or skips scheduled runs when busy (seen on 7-8 Nov: up to 6.5 h late). Fix: say "Research now" to run immediately.`, tone: hourUtc > 10 ? "warn" : "info" });
+      items.push({ title: "GitHub has not started today's scheduled run yet", detail: `Planned: the PIES daily timer (Vercel, about 05:17 UTC) plus GitHub's backup tries at 05:17, 06:47 and 09:17 UTC. GitHub often skips its tries; if the timer also failed, check health. Fix now: say "Research now".`, tone: hourUtc > 10 ? "warn" : "info" });
     }
     const failed = ghRuns.find((r) => r.status === "completed" && r.conclusion === "failure");
     if (failed && failed.createdAt.startsWith(today)) {

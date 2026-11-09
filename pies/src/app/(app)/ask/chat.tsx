@@ -201,7 +201,11 @@ export function Chat({ initial }: { initial: string | null }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
-  useEffect(() => end.current?.scrollIntoView({ behavior: "smooth", block: "end" }), [msgs.length]);
+  // Braces matter: newer browsers return a Promise from scrollIntoView, and an effect must not
+  // return anything but a cleanup function (returning it crashed the page).
+  useEffect(() => {
+    end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [msgs.length]);
 
   return (
     <section aria-label="Command chat" className="flex min-w-0 flex-col gap-3">

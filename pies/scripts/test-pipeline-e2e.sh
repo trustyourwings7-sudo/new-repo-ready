@@ -36,8 +36,9 @@ INT_ID="44444444-0000-4000-8000-000000000001"
 alter role pies_automation login password 'pipe-only-password';
 insert into auth.users (id, email) values ('$USER_ID', 'owner@example.test');
 insert into public.user_preferences (user_id) values ('$USER_ID') on conflict (user_id) do nothing;
-insert into public.automation_integrations (id, user_id, name, enabled, allowed_agents)
-values ('$INT_ID', '$USER_ID', 'pies-research-runner', true, '{discovery}');
+-- Test-only limit: this script starts many runs within a minute (production keeps 30/min).
+insert into public.automation_integrations (id, user_id, name, enabled, allowed_agents, max_requests_per_minute)
+values ('$INT_ID', '$USER_ID', 'pies-research-runner', true, '{discovery}', 120);
 -- Seed the owner's projects the way the app does on first sign-in.
 select set_config('request.jwt.claims', '{"sub":"$USER_ID","role":"authenticated"}', false) is not null as _ \gset
 select public.initialize_projects() is not null as _ \gset
@@ -138,7 +139,7 @@ echo "ok   ids + price date from config only -> passes the gate, reaches the DB,
 #     workflow limits override the config secret (secret allows 10 pages; env allows 2).
 code=$(GITHUB_EVENT_NAME=schedule PIES_MAX_SEARCHES=3 PIES_MAX_EXTRACTIONS=2 RUN || true)
 [ "$code" = "0" ] || fail "scheduled run: expected exit 0, got $code: $(cat "$WORK/err") $(cat "$WORK/out")"
-grep -q '"trigger":"schedule","caps":{"searches":2,"extractions":2}' "$WORK/out" || fail "scheduled run: caps not applied: $(cat "$WORK/out")"
+grep -q '"trigger":"schedule","adhoc":false,"caps":{"searches":2,"extractions":2}' "$WORK/out" || fail "scheduled run: caps not applied: $(cat "$WORK/out")"
 grep -q '"extracted":2' "$WORK/out" || fail "scheduled run: expected 2 extractions (env cap): $(cat "$WORK/out")"
 sched_count=$(count)
 [ "$sched_count" != "$before" ] || fail "scheduled run did no research (blocked by the manual run's keys)"
@@ -149,6 +150,25 @@ code=$(GITHUB_EVENT_NAME=schedule PIES_MAX_SEARCHES=3 PIES_MAX_EXTRACTIONS=2 RUN
 grep -q '"outcome":"already_done"' "$WORK/out" || fail "second scheduled run: expected already_done: $(cat "$WORK/out")"
 [ "$(q "select status from public.agent_runs order by started_at desc limit 1")" = "cancelled" ] || fail "already-done run must close as cancelled"
 echo "ok   second scheduled run same day -> already_done, exit 0, run cancelled, zero new provider calls"
+
+# 5d. "Research Now" from the app: one-off query, own request-id key, 1 search only.
+before_app=$(count)
+code=$(PIES_ADHOC_QUERY="scholarships in Canada" PIES_ADHOC_CATEGORY=scholarship PIES_REQUEST_ID=req-test-0001 PIES_MAX_SEARCHES=3 PIES_MAX_EXTRACTIONS=2 RUN || true)
+[ "$code" = "0" ] || fail "app run: expected exit 0, got $code: $(cat "$WORK/err") $(cat "$WORK/out")"
+grep -q '"adhoc":true' "$WORK/out" || fail "app run: adhoc flag missing: $(cat "$WORK/out")"
+grep -q '"queries":1' "$WORK/out" || fail "app run: expected exactly 1 query: $(cat "$WORK/out")"
+[ "$(count)" != "$before_app" ] || fail "app run did no research (blocked by an earlier key)"
+app_count=$(count)
+code=$(PIES_ADHOC_QUERY="scholarships in Canada" PIES_ADHOC_CATEGORY=scholarship PIES_REQUEST_ID=req-test-0001 PIES_MAX_SEARCHES=3 PIES_MAX_EXTRACTIONS=2 RUN || true)
+[ "$(count)" = "$app_count" ] || fail "same request id spent twice"
+grep -q '"outcome":"already_done"' "$WORK/out" || fail "repeated request id: expected already_done: $(cat "$WORK/out")"
+echo "ok   app run -> one-off query, 1 search, own key; same request id again -> already_done, no spend"
+code=$(PIES_ADHOC_QUERY='x; rm -rf / $(id)' PIES_REQUEST_ID=req-test-0002 RUN || true)
+[ "$code" = "3" ] || fail "unsafe query: expected exit 3, got $code"
+[ "$(count)" = "$app_count" ] || fail "unsafe query reached a provider"
+code=$(PIES_ADHOC_QUERY="grants" PIES_REQUEST_ID='BAD ID' RUN || true)
+[ "$code" = "3" ] || fail "bad request id: expected exit 3, got $code"
+echo "ok   unsafe query or request id -> blocked before any call (exit 3)"
 
 # 6. Secrets never reach output.
 if grep -qE 'test-exa-key|test-fc-key|pipe-only-password' "$WORK/out" "$WORK/err"; then fail "secret appeared in runner output"; fi

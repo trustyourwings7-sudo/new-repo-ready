@@ -21,7 +21,7 @@ export const MODULES: readonly ModuleDef[] = [
   { slug: "opportunities", letter: "B", name: "Opportunity Intelligence", status: "available", phase: 2, summary: "Every stored opportunity with sources, deadlines and verification.", tables: ["opportunities", "opportunity_sources"] },
   { slug: "career", letter: "C", name: "Employment & Career", status: "schema_ready", phase: 5, summary: "Role matching, applications, interviews and skills gaps.", tables: ["applications", "skills"] },
   { slug: "funding", letter: "D", name: "Education & Funding", status: "schema_ready", phase: 2, summary: "Programs, scholarships, grants and accelerators.", tables: ["opportunities"] },
-  { slug: "contacts", letter: "E", name: "Organizations & Contacts", status: "schema_ready", phase: 3, summary: "Publicly listed decision-makers with source URLs.", tables: ["organizations", "contacts"] },
+  { slug: "contacts", letter: "E", name: "Organizations & Contacts", status: "available", phase: 3, summary: "View, search, add, edit and delete sourced organizations and contacts.", tables: ["organizations", "contacts"] },
   { slug: "outreach", letter: "F", name: "Outreach & Communications", status: "schema_ready", phase: 3, summary: "Personalized drafts and Gmail drafts. Nothing is sent without approval.", tables: ["outreach", "approval_requests"] },
   { slug: "revenue", letter: "G", name: "Revenue & Commercial Pipeline", status: "schema_ready", phase: 4, summary: "Prospects in schools, clinics, travel and hospitality.", tables: ["client_pipeline"] },
   { slug: "agents", letter: "H", name: "Agent Management", status: "schema_ready", phase: 2, summary: "Agent runs, tasks, limits and failures.", tables: ["agent_runs", "agent_tasks"] },

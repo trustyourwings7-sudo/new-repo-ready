@@ -127,10 +127,28 @@ if (problems.length) fail(3, `blocked (no provider or database call made):\n- ${
 
 const today = new Date().toISOString().slice(0, 10);
 const trigger: "schedule" | "manual" = env.GITHUB_EVENT_NAME === "schedule" ? "schedule" : "manual";
-// Budget idempotency is per day AND per trigger: at most one paid scheduled run and one paid manual
-// run per day; retries within a slot never re-spend. (A same-day manual test no longer blocks the
-// scheduled run.)
-const runKey = `${today}:${trigger}`;
+// "Research Now" from the PIES app: an optional one-off query and a request id. Validated strictly;
+// anything unexpected stops the run before any provider or database call.
+const requestId = trigger === "manual" ? (env.PIES_REQUEST_ID ?? "").trim() : "";
+const adhocQuery = trigger === "manual" ? (env.PIES_ADHOC_QUERY ?? "").trim() : "";
+const adhocCategory = (env.PIES_ADHOC_CATEGORY ?? "").trim() || "scholarship";
+if (requestId && !/^[a-z0-9-]{8,40}$/.test(requestId)) fail(3, "blocked: request id must be 8-40 chars of a-z, 0-9 or -");
+if (adhocQuery && !/^[\p{L}\p{N} ,.'&()/-]{3,120}$/u.test(adhocQuery)) fail(3, "blocked: query must be 3-120 letters, digits, spaces or basic punctuation");
+if (adhocQuery && !(OPPORTUNITY_CATEGORIES as readonly string[]).includes(adhocCategory)) fail(3, "blocked: unknown category");
+// Budget idempotency: scheduled runs are once per day; app-started runs are once per request id
+// (the app limits how many it starts per day); a plain manual run stays once per day. Retries with
+// the same key never re-spend. Monthly provider caps in the database still bound everything.
+const runKey = requestId ? `${today}:app:${requestId}` : `${today}:${trigger}`;
+// A one-off query uses the project of the first configured query in the same category (or the first).
+const queries: typeof cfg.queries = adhocQuery
+  ? [{
+      project: (cfg.queries.find((q) => q.category === adhocCategory) ?? cfg.queries[0]!).project,
+      category: adhocCategory as (typeof cfg.queries)[number]["category"],
+      query: adhocQuery,
+      numResults: 8,
+      strategicFit: "primary",
+    }]
+  : cfg.queries;
 // Workflow-level hard limits (owner condition: 3 searches, 4 pages a day). The lower of these and
 // the config secret's caps applies, so the secret cannot raise them.
 const envCap = (v: string | undefined, max: number) => {
@@ -162,7 +180,7 @@ const meter = new MeteredResearch(exa, firecrawl, {
 
 try {
   const report = await runPipeline(
-    { runKey, today, trigger, profile: cfg.profile, queries: cfg.queries, excludeHosts: cfg.excludeHosts, officialDomains: cfg.officialDomains, aggregators: cfg.aggregators },
+    { runKey, today, trigger, profile: cfg.profile, queries, excludeHosts: cfg.excludeHosts, officialDomains: cfg.officialDomains, aggregators: cfg.aggregators },
     { meter, sink, robots: new RobotsPolicy() },
   );
   if (env.PIES_REPORT_PATH) writeFileSync(env.PIES_REPORT_PATH, report.markdown);
@@ -172,7 +190,7 @@ try {
   // Already done = a later daily attempt after today's research succeeded (several cron times guard
   // against GitHub skipping a scheduled slot). Also exit 0: nothing is wrong and nothing was spent.
   const alreadyDone = report.outcome === "blocked" && (report.stoppedEarly ?? "").includes("duplicate_operation");
-  console.log(JSON.stringify({ ok: true, trigger, caps, outcome: paused ? "paused" : alreadyDone ? "already_done" : report.outcome, metrics: report.metrics, stoppedEarly: report.stoppedEarly ? report.stoppedEarly.split(":")[0] : null }));
+  console.log(JSON.stringify({ ok: true, trigger, adhoc: Boolean(adhocQuery), caps, outcome: paused ? "paused" : alreadyDone ? "already_done" : report.outcome, metrics: report.metrics, stoppedEarly: report.stoppedEarly ? report.stoppedEarly.split(":")[0] : null }));
   await sink.close();
   // blocked = nothing was extracted (budget, gate, auth, quota). empty/low_yield are reported, not failures.
   process.exit(report.outcome === "blocked" && !paused && !alreadyDone ? 4 : 0);

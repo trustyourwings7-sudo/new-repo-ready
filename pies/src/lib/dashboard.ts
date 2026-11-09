@@ -68,12 +68,15 @@ export async function loadDashboard(sb: SupabaseClient, opts: { q?: string; cate
   const byProject = (query: any) => (projectId ? query.eq("project_id", projectId) : query);
 
   const [overview, priority, career, funding, commercial, outreach, deadlines, agents, research, budget] = await Promise.all([
-    section(async () => ({
-      total: await count(sb, "opportunities", byProject),
-      open: await count(sb, "opportunities", (x) => byProject(x.in("status", OPEN_STATUSES))),
-      verified: await count(sb, "opportunities", (x) => byProject(x.not("last_verified_at", "is", null))),
-      ineligible: await count(sb, "opportunities", (x) => byProject(x.eq("eligibility_status", "ineligible"))),
-    })),
+    section(async () => {
+      const [total, open, verified, ineligible] = await Promise.all([
+        count(sb, "opportunities", byProject),
+        count(sb, "opportunities", (x) => byProject(x.in("status", OPEN_STATUSES))),
+        count(sb, "opportunities", (x) => byProject(x.not("last_verified_at", "is", null))),
+        count(sb, "opportunities", (x) => byProject(x.eq("eligibility_status", "ineligible"))),
+      ]);
+      return { total, open, verified, ineligible };
+    }),
     section(async () => {
       const { data, error } = await filter(
         sb
@@ -88,28 +91,40 @@ export async function loadDashboard(sb: SupabaseClient, opts: { q?: string; cate
       if (error) throw new Error(error.message);
       return (data ?? []) as OpportunityRow[];
     }),
-    section(async () => ({
-      preparing: await count(sb, "applications", (x) => x.in("status", ["preparing", "ready_for_review"])),
-      submitted: await count(sb, "applications", (x) => x.eq("status", "submitted")),
-      interviews: await count(sb, "applications", (x) => x.eq("status", "interview")),
-      offers: await count(sb, "applications", (x) => x.in("status", ["offer", "accepted"])),
-    })),
-    section(async () => ({
-      open: await count(sb, "opportunities", (x) => x.in("category", FUNDING).in("status", OPEN_STATUSES)),
-      applied: await count(sb, "opportunities", (x) => x.in("category", FUNDING).eq("status", "applied")),
-      won: await count(sb, "opportunities", (x) => x.in("category", FUNDING).eq("status", "won")),
-    })),
-    section(async () => ({
-      prospects: await count(sb, "client_pipeline", (x) => byProject(x.in("stage", ["prospect", "researching"]))),
-      qualified: await count(sb, "client_pipeline", (x) => byProject(x.in("stage", ["qualified", "contacted", "meeting", "proposal", "negotiation"]))),
-      won: await count(sb, "client_pipeline", (x) => byProject(x.eq("stage", "won"))),
-    })),
-    section(async () => ({
-      drafts: await count(sb, "outreach", (x) => x.in("status", ["draft_internal", "gmail_draft_created"])),
-      awaitingApproval: await count(sb, "approval_requests", (x) => x.eq("status", "pending")),
-      sent: await count(sb, "outreach", (x) => x.eq("status", "sent")),
-      followUpsDue: await count(sb, "outreach", (x) => x.lte("follow_up_due", in30).in("status", ["sent", "gmail_draft_created"])),
-    })),
+    section(async () => {
+      const [preparing, submitted, interviews, offers] = await Promise.all([
+        count(sb, "applications", (x) => x.in("status", ["preparing", "ready_for_review"])),
+        count(sb, "applications", (x) => x.eq("status", "submitted")),
+        count(sb, "applications", (x) => x.eq("status", "interview")),
+        count(sb, "applications", (x) => x.in("status", ["offer", "accepted"])),
+      ]);
+      return { preparing, submitted, interviews, offers };
+    }),
+    section(async () => {
+      const [open, applied, won] = await Promise.all([
+        count(sb, "opportunities", (x) => x.in("category", FUNDING).in("status", OPEN_STATUSES)),
+        count(sb, "opportunities", (x) => x.in("category", FUNDING).eq("status", "applied")),
+        count(sb, "opportunities", (x) => x.in("category", FUNDING).eq("status", "won")),
+      ]);
+      return { open, applied, won };
+    }),
+    section(async () => {
+      const [prospects, qualified, won] = await Promise.all([
+        count(sb, "client_pipeline", (x) => byProject(x.in("stage", ["prospect", "researching"]))),
+        count(sb, "client_pipeline", (x) => byProject(x.in("stage", ["qualified", "contacted", "meeting", "proposal", "negotiation"]))),
+        count(sb, "client_pipeline", (x) => byProject(x.eq("stage", "won"))),
+      ]);
+      return { prospects, qualified, won };
+    }),
+    section(async () => {
+      const [drafts, awaitingApproval, sent, followUpsDue] = await Promise.all([
+        count(sb, "outreach", (x) => x.in("status", ["draft_internal", "gmail_draft_created"])),
+        count(sb, "approval_requests", (x) => x.eq("status", "pending")),
+        count(sb, "outreach", (x) => x.eq("status", "sent")),
+        count(sb, "outreach", (x) => x.lte("follow_up_due", in30).in("status", ["sent", "gmail_draft_created"])),
+      ]);
+      return { drafts, awaitingApproval, sent, followUpsDue };
+    }),
     section(async () => {
       const { data, error } = await filter(
         sb

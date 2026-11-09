@@ -47,6 +47,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <div>
           <h1 className="text-lg font-semibold">Command Dashboard</h1>
           <p className="text-sm text-mist-400">Only stored records are shown. Nothing here is sample data.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Link href="/ask?cmd=research%20now" className="rounded bg-signal-500 px-3 py-1.5 text-sm font-medium text-ink-950 hover:bg-signal-400">Research now</Link>
+            <Link href="/ask?cmd=explain%20why%20today%27s%20research%20failed" className="rounded border border-ink-700 px-3 py-1.5 text-sm hover:border-mist-400">Diagnose research</Link>
+            <Link href="/ask" className="rounded border border-ink-700 px-3 py-1.5 text-sm hover:border-mist-400">Ask PIES</Link>
+          </div>
         </div>
         <form className="flex flex-wrap gap-2" role="search" aria-label="Filter opportunities">
           <label className="sr-only" htmlFor="q">Search opportunities</label>

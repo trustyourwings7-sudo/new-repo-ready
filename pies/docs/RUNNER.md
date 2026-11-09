@@ -27,6 +27,16 @@ Why this shape:
 | Cloudflare Workers Free + Cron | Rejected for now | **10 ms CPU per cron run**, 50 external subrequests, 5 cron triggers per account ([limits](https://developers.cloudflare.com/workers/platform/limits/)). Markdown parsing of 10 pages risks the CPU cap, and Postgres needs a socket shim. Revisit only if Actions becomes unreliable. The pipeline code is runtime-agnostic (`fetch` only), except the Postgres sink. |
 | n8n Cloud | Retired | Trial expired; renewal not authorized. Workflows/data in the n8n account are untouched. |
 
+### How runs start (2026-11-09)
+| Starter | How | Budget key | Limits |
+|---|---|---|---|
+| **Daily timer** (primary) | Vercel Cron `17 5 * * *` → `/api/cron/daily-research` (Bearer `CRON_SECRET`) → `workflow_dispatch` with `request_id=sched-YYYYMMDD` | `<date>:schedule` | once a day |
+| GitHub schedule (backup) | `17 5`, `47 6`, `17 9` UTC crons; GitHub skipped all three on 2026-11-09 | `<date>:schedule` (shared) | a later attempt reports `already_done`, $0 |
+| **Research Now** (owner) | Ask PIES → confirm button → `workflow_dispatch` with `request_id=r<16 hex>`, optional `query`/`category` | `<date>:app:<request id>` | 3 a day (checked by the app before dispatch); a one-off query = 1 search + up to 4 pages (~$0.05) |
+| Manual in GitHub | Actions → Run workflow, `live=yes` | `<date>:manual` | once a day |
+
+Every paid call still goes through `reserve_budget`: the paid switch, provider caps (Exa $0.70, Firecrawl $1.25) and the $10 hard cap apply to every starter.
+
 ## What it costs, and what the internal cap does NOT guarantee
 
 **Two different things limit spend. Only one of them is in PIES.**

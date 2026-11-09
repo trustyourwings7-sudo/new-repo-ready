@@ -21,6 +21,10 @@ export interface SourceAssessment {
 /** Aggregators seen in PIES research; extendable by config. Never official for the opportunity itself. */
 export const KNOWN_AGGREGATORS = [
   "scholarshipsforafricans.com",
+  "scholarshipscanada.com",
+  "yconic.com",
+  "universitystudy.ca",
+  "scholarshipportal.com",
   "opportunitydesk.org",
   "opportunitiesforafricans.com",
   "scholars4dev.com",

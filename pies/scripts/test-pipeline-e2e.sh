@@ -170,6 +170,16 @@ code=$(PIES_ADHOC_QUERY="grants" PIES_REQUEST_ID='BAD ID' RUN || true)
 [ "$code" = "3" ] || fail "bad request id: expected exit 3, got $code"
 echo "ok   unsafe query or request id -> blocked before any call (exit 3)"
 
+# 5e. Daily timer (Vercel Cron -> workflow_dispatch with request id sched-YYYYMMDD) shares the
+#     scheduled slot: the scheduled run already happened today, so this must spend nothing.
+before_timer=$(count)
+code=$(PIES_REQUEST_ID="sched-$(date -u +%Y%m%d)" PIES_ADHOC_QUERY="should be ignored" RUN || true)
+[ "$code" = "0" ] || fail "timer run: expected exit 0, got $code: $(cat "$WORK/err") $(cat "$WORK/out")"
+grep -q '"trigger":"schedule","adhoc":false' "$WORK/out" || fail "timer run must count as the scheduled run with no one-off query: $(cat "$WORK/out")"
+grep -q '"outcome":"already_done"' "$WORK/out" || fail "timer run after today's scheduled run: expected already_done: $(cat "$WORK/out")"
+[ "$(count)" = "$before_timer" ] || fail "timer run spent again on the same day"
+echo "ok   daily timer run -> same budget key as the scheduled run (already_done, no spend)"
+
 # 6. Secrets never reach output.
 if grep -qE 'test-exa-key|test-fc-key|pipe-only-password' "$WORK/out" "$WORK/err"; then fail "secret appeared in runner output"; fi
 echo "ok   no secret in runner output"

@@ -126,13 +126,18 @@ if (env.PIES_CONNECTION_CHECK === "1" && env.PIES_LIVE_RESEARCH !== "1") {
 if (problems.length) fail(3, `blocked (no provider or database call made):\n- ${problems.join("\n- ")}`);
 
 const today = new Date().toISOString().slice(0, 10);
-const trigger: "schedule" | "manual" = env.GITHUB_EVENT_NAME === "schedule" ? "schedule" : "manual";
 // "Research Now" from the PIES app: an optional one-off query and a request id. Validated strictly;
 // anything unexpected stops the run before any provider or database call.
-const requestId = trigger === "manual" ? (env.PIES_REQUEST_ID ?? "").trim() : "";
+const rawRequestId = env.GITHUB_EVENT_NAME === "schedule" ? "" : (env.PIES_REQUEST_ID ?? "").trim();
+// The daily timer in the app (Vercel Cron) dispatches with request id "sched-YYYYMMDD". That run IS
+// the scheduled run: it shares the scheduled slot's budget key, so whichever of it and GitHub's own
+// schedule runs first does the research and the other reports already_done.
+const viaDailyTimer = /^sched-\d{8}$/.test(rawRequestId);
+const trigger: "schedule" | "manual" = env.GITHUB_EVENT_NAME === "schedule" || viaDailyTimer ? "schedule" : "manual";
+const requestId = trigger === "manual" ? rawRequestId : "";
 const adhocQuery = trigger === "manual" ? (env.PIES_ADHOC_QUERY ?? "").trim() : "";
 const adhocCategory = (env.PIES_ADHOC_CATEGORY ?? "").trim() || "scholarship";
-if (requestId && !/^[a-z0-9-]{8,40}$/.test(requestId)) fail(3, "blocked: request id must be 8-40 chars of a-z, 0-9 or -");
+if (rawRequestId && !/^[a-z0-9-]{8,40}$/.test(rawRequestId)) fail(3, "blocked: request id must be 8-40 chars of a-z, 0-9 or -");
 if (adhocQuery && !/^[\p{L}\p{N} ,.'&()/-]{3,120}$/u.test(adhocQuery)) fail(3, "blocked: query must be 3-120 letters, digits, spaces or basic punctuation");
 if (adhocQuery && !(OPPORTUNITY_CATEGORIES as readonly string[]).includes(adhocCategory)) fail(3, "blocked: unknown category");
 // Budget idempotency: scheduled runs are once per day; app-started runs are once per request id
@@ -144,7 +149,9 @@ const queries: typeof cfg.queries = adhocQuery
   ? [{
       project: (cfg.queries.find((q) => q.category === adhocCategory) ?? cfg.queries[0]!).project,
       category: adhocCategory as (typeof cfg.queries)[number]["category"],
-      query: adhocQuery,
+      // A bare subject ("scholarships in Canada") mostly finds directory sites. Steer the search to
+      // the page an official publisher would write; aggregators are also excluded by host.
+      query: `${adhocQuery} official university or government page for international applicants with eligibility and application deadline`.slice(0, 500),
       numResults: 8,
       strategicFit: "primary",
     }]

@@ -67,7 +67,9 @@ All references between user-owned rows are composite `(id, user_id)` foreign key
 
 ## Hosting
 
-Not deployed. Candidates, with what is known:
+**Deployed 2026-11-08 on Vercel Hobby (free): https://pies-trustyourwings.vercel.app** (owner-approved). The app is a private personal dashboard, which fits Hobby's personal-use terms. If PIES is ever sold or used commercially, move to Cloudflare (free) rather than Vercel Pro ($20/month, over budget). Setup and redeploy steps: DEPLOYMENT.md → 6.
+
+Options considered:
 
 | Option | Cost | Risk |
 |---|---|---|
@@ -75,4 +77,4 @@ Not deployed. Candidates, with what is known:
 | Vercel Hobby | Free | Hobby terms are for non-commercial use [Likely]; PIES supports income generation, so read the terms before choosing it. |
 | Local only (`pnpm start`) | Free | The dashboard is offline when your computer is; n8n automations still run. |
 
-Decision deferred to the deployment step. It needs your approval.
+Decision: Vercel Hobby (owner-approved 2026-11-08).

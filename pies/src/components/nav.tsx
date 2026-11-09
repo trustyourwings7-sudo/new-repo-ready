@@ -11,7 +11,7 @@ const DOT: Record<ModuleStatus, string> = {
 };
 const LABEL: Record<ModuleStatus, string> = {
   available: "available",
-  schema_ready: "database ready, interface in a later phase",
+  schema_ready: "read-only view; editing not built yet",
   planned: "planned",
 };
 

@@ -4,14 +4,18 @@ import { randomBytes } from "node:crypto";
 import { getSession } from "@/lib/auth";
 import { answer, researchPreflight, type Reply } from "@/lib/assistant/answer";
 import { dispatchResearch } from "@/lib/assistant/github";
-import { cleanQuery, parseIntent, RESEARCH_CATEGORIES } from "@/lib/assistant/intent";
+import { cleanQuery, parseIntents, RESEARCH_CATEGORIES } from "@/lib/assistant/intent";
 import { log } from "@/lib/logger";
 
 export async function ask(text: string): Promise<Reply> {
   const session = await getSession();
   if (session.kind !== "signed_in") return { text: "Please sign in again.", tone: "bad" };
   const input = String(text ?? "").slice(0, 300);
-  return answer(session.supabase, parseIntent(input));
+  const intents = parseIntents(input);
+  if (intents.length === 1) return answer(session.supabase, intents[0]!);
+  const sections = await Promise.all(intents.map((i) => answer(session.supabase, i)));
+  const tone = sections.some((r) => r.tone === "bad") ? "bad" : sections.some((r) => r.tone === "warn") ? "warn" : "info";
+  return { text: `${sections.length} answers:`, tone, sections };
 }
 
 /** Starts live research. Only from the confirm button; every limit is re-checked here. */

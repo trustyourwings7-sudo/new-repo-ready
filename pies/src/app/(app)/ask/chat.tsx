@@ -144,6 +144,15 @@ function ReplyView({ reply, onSend, onConfirm, busy }: { reply: Reply; onSend: (
           </button>
         </div>
       ) : null}
+      {reply.sections?.length ? (
+        <div className="mt-2 space-y-3">
+          {reply.sections.map((sec, i) => (
+            <div key={i} className="border-t border-ink-800 pt-2">
+              <ReplyView reply={sec} onSend={onSend} onConfirm={onConfirm} busy={busy} />
+            </div>
+          ))}
+        </div>
+      ) : null}
       {reply.track ? <Tracker requestId={reply.track.requestId} /> : null}
       {reply.suggestions?.length ? (
         <div className="mt-2 flex flex-wrap gap-1.5">

@@ -110,6 +110,11 @@ export class MeteredResearch {
     });
   }
 
+  /** Page extractions still allowed in this run (never negative). */
+  extractionsLeft(): number {
+    return Math.max(0, this.ctx.caps.extractions - this.stats.extractions);
+  }
+
   async extractOnce(url: string): Promise<ExtractedPage> {
     if (this.stats.extractions >= this.ctx.caps.extractions) throw new RunCapReached("extractions");
     this.stats.extractions++;

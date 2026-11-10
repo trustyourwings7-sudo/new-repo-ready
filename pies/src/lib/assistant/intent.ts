@@ -91,3 +91,21 @@ export function parseIntent(input: string): Intent {
 
   return { kind: "help" };
 }
+
+/**
+ * Several commands in one message ("check health and show my deadlines"). A research request keeps
+ * the whole text (its subject may contain "and"). Returns 1-3 distinct intents, in order.
+ */
+export function parseIntents(input: string): Intent[] {
+  const whole = parseIntent(input);
+  if (whole.kind === "research") return [whole];
+  const parts = input.split(/\s*(?:;|\n|,\s*(?:and\s+)?|\band then\b|\bthen\b|\band also\b|\balso\b|\band\b)\s*/i).map((p) => p.trim()).filter((p) => p.length > 1);
+  if (parts.length < 2) return [whole];
+  const out: Intent[] = [];
+  for (const p of parts) {
+    const i = parseIntent(p);
+    if (i.kind === "help") continue;
+    if (!out.some((o) => JSON.stringify(o) === JSON.stringify(i))) out.push(i);
+  }
+  return out.length >= 2 ? out.slice(0, 3) : [whole];
+}

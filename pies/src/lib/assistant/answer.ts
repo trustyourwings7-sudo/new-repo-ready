@@ -21,6 +21,8 @@ export interface Reply {
   items?: ReplyItem[];
   /** A button the owner must press. Research never starts from typing alone. */
   confirm?: { label: string; query: string | null; category: string; estimate: string };
+  /** Answers to several commands sent in one message, shown one after another. */
+  sections?: Reply[];
   /** Live status of an app-started research run. */
   track?: { requestId: string };
   suggestions?: string[];
@@ -204,6 +206,8 @@ async function researchOffer(sb: SupabaseClient, query: string | null, category:
 
 async function health(sb: SupabaseClient): Promise<Reply> {
   const items: ReplyItem[] = [];
+  // The first call on a cold server includes connection setup; time a second, warm call.
+  await sb.from("projects").select("id", { head: true, count: "exact" });
   const t0 = performance.now();
   const ping = await sb.from("projects").select("id", { head: true, count: "exact" });
   const dbMs = Math.round(performance.now() - t0);

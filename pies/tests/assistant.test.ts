@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { explainStop } from "../src/lib/assistant/explain";
-import { cleanQuery, parseIntent } from "../src/lib/assistant/intent";
+import { cleanQuery, parseIntent, parseIntents } from "../src/lib/assistant/intent";
 
 describe("command chat: intent parsing (no AI, no network)", () => {
   it.each([
@@ -62,5 +62,18 @@ describe("diagnosis: stop reasons become causes and fixes", () => {
   });
   it("returns null for unknown reasons instead of guessing", () => {
     expect(explainStop("something new")).toBeNull();
+  });
+});
+
+describe("several commands in one message", () => {
+  it("splits independent commands", () => {
+    expect(parseIntents("Check PIES health and show my deadlines").map((i) => i.kind)).toEqual(["health", "deadlines"]);
+    expect(parseIntents("show my budget, tasks and deadlines").map((i) => i.kind)).toEqual(["budget", "tasks", "deadlines"]);
+  });
+  it("keeps a research subject whole", () => {
+    expect(parseIntents("find scholarships and grants in Canada")).toEqual([{ kind: "research", query: "scholarships and grants in Canada", category: "scholarship" }]);
+  });
+  it("falls back to one intent when parts are not commands", () => {
+    expect(parseIntents("show my deadlines and stuff").map((i) => i.kind)).toEqual(["deadlines"]);
   });
 });

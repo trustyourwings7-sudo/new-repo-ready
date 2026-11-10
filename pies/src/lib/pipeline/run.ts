@@ -10,6 +10,7 @@ import { prioritize, qualify, type Qualification, type VerifiedProfile } from ".
 import type { PipelineSink } from "./sink.ts";
 import { classifySource, isErrorPage, isListingPage, KNOWN_AGGREGATORS, sourceTypeFor, type SourceAssessment } from "./source.ts";
 import { extractFacts, verificationStatus, type PageFacts, type VerificationStatus } from "./verify.ts";
+import { findDeadlineLink } from "./followup.ts";
 
 /**
  * Discover -> Extract -> Verify -> Qualify -> Prioritize -> Contacts -> Draft -> Report.
@@ -85,6 +86,9 @@ export interface PipelineReport {
     committedUsd: number;
     overruns: number;
     chargedFailures: number;
+    /** Extra reads of an official site's "apply / deadlines" sub-page, and how many found a deadline. */
+    followUps: number;
+    followUpDeadlines: number;
   };
   /**
    * blocked     stopped before any page was extracted (budget, gate, auth, quota)
@@ -119,6 +123,8 @@ export async function runPipeline(
   const start = await exec("run.start", { workflow: "pies-research", trigger: config.trigger, max_tasks: 50 });
   const runId = String(start.run_id);
   const candidates: CandidateResult[] = [];
+  let followUps = 0;
+  let followUpDeadlines = 0;
   const seen = new Set<string>();
   const exclude = new Set((config.excludeHosts ?? []).map((h) => h.toLowerCase()));
   let hits = 0;
@@ -180,6 +186,36 @@ export async function runPipeline(
     const text = page.markdown || c.snippet;
     const facts = extractFacts(text, config.today);
     const source = classifySource(c.url, { fetched: Boolean(page.markdown), statusCode: page.statusCode, injection: facts.injectionSignals.length > 0 }, config);
+    // Deadline follow-up: an official programme page without a dated deadline gets ONE extra read
+    // of its own "how to apply / deadlines" sub-page. It uses the same per-run page cap.
+    let followUp: { url: string; text: string } | null = null;
+    if (
+      source.cls === "official" &&
+      (!facts.deadline || facts.deadline.confidence === "Guessing") &&
+      !facts.injectionSignals.length &&
+      !isErrorPage(page.title || c.title, text) &&
+      !isListingPage(page.title || c.title, text, source.cls) &&
+      meter.extractionsLeft() > 0
+    ) {
+      const link = findDeadlineLink(text, c.url);
+      if (link && (await deps.robots.allowed(link))) {
+        try {
+          const sub = await meter.extractOnce(link);
+          followUps++;
+          const subFacts = extractFacts(sub.markdown, config.today);
+          if (!subFacts.injectionSignals.length && subFacts.deadline && (!facts.deadline || subFacts.deadline.confidence !== "Guessing")) {
+            facts.deadline = { ...subFacts.deadline, quote: `${subFacts.deadline.quote} [from ${link}]` };
+            followUp = { url: link, text: sub.markdown };
+            followUpDeadlines++;
+          }
+          if (!facts.applicationFee && subFacts.applicationFee) facts.applicationFee = subFacts.applicationFee;
+          if (!facts.maxAge && subFacts.maxAge) facts.maxAge = subFacts.maxAge;
+        } catch (err) {
+          // A failed follow-up never sinks the main page; a stop condition (budget, cap) still stops the run.
+          stop(err);
+        }
+      }
+    }
     const verification = verificationStatus(source, facts);
     const contacts = extractContacts(text, c.url);
     // Draft recipients come only from official, injection-free pages (injection makes a page
@@ -232,6 +268,16 @@ export async function runPipeline(
         evidence_excerpt: evidence.slice(0, 5000),
         content_hash: contentHash(text),
       });
+      if (followUp) {
+        await exec("source.add", {
+          run_id: runId,
+          opportunity_id: opp.opportunity_id,
+          url: followUp.url,
+          source_type: sourceTypeFor(source.cls),
+          evidence_excerpt: `deadline page on the same official site\ndeadline (${facts.deadline!.confidence}): "${facts.deadline!.quote}"`.slice(0, 5000),
+          content_hash: contentHash(followUp.text),
+        });
+      }
       // Drafts only to OFFICIAL publishers: writing to an aggregator about someone else's programme is noise.
       if (source.cls === "official") {
         row.draft = buildDraft({ title, suspicious: facts.injectionSignals.length > 0, organization: siteOf(c.url), deadline: facts.deadline?.value ?? null, contact, profile: config.profile });
@@ -276,6 +322,8 @@ export async function runPipeline(
     committedUsd: round6(meter.stats.committedUsd),
     overruns: meter.stats.overruns,
     chargedFailures: meter.stats.chargedFailures,
+    followUps,
+    followUpDeadlines,
   };
   const productive = candidates.some((c) => c.qualified && c.verification === "verified");
   const outcome: PipelineReport["outcome"] =

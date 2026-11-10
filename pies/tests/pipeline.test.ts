@@ -6,6 +6,7 @@ import { runPipeline, type PipelineConfig } from "../src/lib/pipeline/run.ts";
 import { memorySink } from "../src/lib/pipeline/sink.ts";
 import { extractFacts, parseDates, verificationStatus } from "../src/lib/pipeline/verify.ts";
 import { classifySource, sourceTypeFor } from "../src/lib/pipeline/source.ts";
+import { findDeadlineLink } from "../src/lib/pipeline/followup.ts";
 import { MeteredResearch } from "../src/lib/research/metered.ts";
 import { RobotsPolicy } from "../src/lib/research/robots.ts";
 
@@ -348,5 +349,63 @@ describe("deadline extraction (wider wording and formats)", () => {
   });
   it("still ignores past dates and dates in non-deadline sentences", () => {
     expect(extractFacts("Founded on 1 December 2026. The deadline was 1 October 2026.", T).deadline).toBeNull();
+  });
+});
+
+describe("deadline follow-up on official sites", () => {
+  it("picks the same-site deadline / how-to-apply link and ignores noise", () => {
+    const md = [
+      "[Home](/) [Log in](/login) [Contact](/contact) [Privacy](/privacy)",
+      "[Brochure](/files/brochure.pdf) [Partner](https://other.org/deadlines)",
+      "[How to apply](/study/scholarship/how-to-apply)",
+      "[Key dates and deadlines 2027](https://www.uni.ac.be/scholarship/deadlines)",
+    ].join("\n");
+    expect(findDeadlineLink(md, "https://uni.ac.be/scholarship")).toBe("https://www.uni.ac.be/scholarship/deadlines");
+    expect(findDeadlineLink("[How to apply](how-to-apply)", "https://uni.ac.be/scholarship/")).toBe("https://uni.ac.be/scholarship/how-to-apply");
+    expect(findDeadlineLink("[News](/news) [Deadlines](mailto:x@uni.ac.be)", "https://uni.ac.be/s")).toBeNull();
+    expect(findDeadlineLink("[Apply](https://evil.test/apply)", "https://uni.ac.be/s")).toBeNull();
+  });
+
+  const pages: Record<string, string> = {
+    "https://uni.ac.be/scholarship": "Global Scholarship for international students. Fully funded tuition and stipend. [How to apply](/scholarship/how-to-apply)",
+    "https://uni.ac.be/scholarship/how-to-apply": "Submit your application online. Application deadline: 1 March 2027. No application fee.",
+  };
+  const run = async (extractCap: number) => {
+    const search = { name: "exa", search: vi.fn(async () => ({ hits: [{ url: "https://uni.ac.be/scholarship", title: "Global Scholarship", publishedAt: null, snippet: "s" }], reportedUsd: 0.007 })) };
+    const extract = { name: "firecrawl", extract: vi.fn(async (url: string) => ({ url, title: "Global Scholarship", markdown: pages[url] ?? "", statusCode: 200, reportedCredits: 1 })) };
+    const sink = memorySink({ budgetUsd: 2, paidEnabled: true });
+    const meter = new MeteredResearch(search, extract, { rpc: sink.rpc, userId: "u", runKey: "2026-11-05:f", caps: { searches: 1, extractions: extractCap }, pacingMs: { exa: 0, firecrawl: 0 } });
+    const robots = { allowed: async () => true } as unknown as RobotsPolicy;
+    const config: PipelineConfig = {
+      runKey: "2026-11-05:f",
+      today: TODAY,
+      trigger: "manual",
+      profile,
+      officialDomains: ["uni.ac.be"],
+      queries: [{ project: "education-funding", category: "scholarship", query: "q", numResults: 5, strategicFit: "primary" }],
+    };
+    const r = await runPipeline(config, { meter, sink, robots });
+    return { r, sink, extract };
+  };
+
+  it("reads the sub-page, takes its deadline, verifies, and records both pages as sources", async () => {
+    const { r, sink, extract } = await run(4);
+    expect(extract.extract).toHaveBeenCalledTimes(2);
+    const c = r.candidates[0]!;
+    expect(c.facts?.deadline?.value).toBe("2027-03-01");
+    expect(c.facts?.deadline?.quote).toContain("[from https://uni.ac.be/scholarship/how-to-apply]");
+    expect(c.verification).toBe("verified");
+    expect(r.metrics).toMatchObject({ followUps: 1, followUpDeadlines: 1, persisted: 1 });
+    const sources = sink.calls.filter((x) => x.operation === "source.add").map((x) => x.payload.url);
+    expect(sources).toEqual(["https://uni.ac.be/scholarship", "https://uni.ac.be/scholarship/how-to-apply"]);
+    const upsert = sink.calls.find((x) => x.operation === "opportunity.upsert")!.payload;
+    expect(upsert.deadline).toBe("2027-03-01T23:59:59Z");
+  });
+
+  it("never exceeds the page cap: with one page left, no follow-up happens", async () => {
+    const { r, extract } = await run(1);
+    expect(extract.extract).toHaveBeenCalledTimes(1);
+    expect(r.metrics).toMatchObject({ followUps: 0, persisted: 1 });
+    expect(r.candidates[0]!.verification).toBe("partially_verified");
   });
 });
